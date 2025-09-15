@@ -18,18 +18,22 @@ const LoginPage = () => {
     formState: { errors, isSubmitting }
   } = useForm();
 
-  const onSubmit = async (data) => {
-    try {
-      await login({
-        email: data.email,
-        password: data.password
-      });
-      navigate('/app');
-    } catch (error) {
-      // El error ya se maneja en el contexto
-      console.error('Error en login:', error);
-    }
-  };
+const handleMicrosoftLogin = () => {
+ // Redirigir al endpoint de Microsoft OAuth del backend Django
+ const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+  window.location.href = `${apiUrl}/auth/microsoft/login/`;
+};
+const onSubmit = async (data) => {
+  try {
+    await login({
+      email: data.email,
+      password: data.password
+    });
+    navigate('/app'); // CAMBIAR: era '/dashboard'
+  } catch (error) {
+    console.error('Error en login:', error);
+  }
+};
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 to-secondary-50 flex items-center justify-center px-4 sm:px-6 lg:px-8">
@@ -199,11 +203,7 @@ const LoginPage = () => {
               <button
                 type="button"
                 className="w-full flex justify-center items-center px-4 py-3 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-              onClick={() => {
-               const handleMicrosoftLogin = () => {
-                window.location.href = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'}/auth/microsoft/login/`;
-                };
-              }}
+              onClick={handleMicrosoftLogin}
               >
                 <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                   <path

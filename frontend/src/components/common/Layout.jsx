@@ -1,7 +1,7 @@
-// src/components/common/Layout.jsx
+// frontend/src/components/common/Layout.jsx
 import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
-import { AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion'; // AGREGAR: motion import
 import Sidebar from './Sidebar';
 import Header from './Header';
 

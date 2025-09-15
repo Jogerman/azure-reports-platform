@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 
 // src/components/auth/LoginForm.jsx
 import React, { useState } from 'react';

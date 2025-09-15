@@ -1,102 +1,92 @@
 // src/utils/helpers.js
-import { clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-import { format, formatDistanceToNow, isValid } from 'date-fns';
-import { es } from 'date-fns/locale';
 
-// Utility para combinar clases de Tailwind
-export function cn(...inputs) {
-  return twMerge(clsx(inputs));
-}
-
-// Formatear fechas
-export const formatDate = (date, formatStr = 'PPP') => {
-  if (!date) return '';
-  const dateObj = typeof date === 'string' ? new Date(date) : date;
-  if (!isValid(dateObj)) return '';
-  return format(dateObj, formatStr, { locale: es });
+/**
+ * Formatea números grandes con separadores de miles
+ */
+export const formatNumber = (num) => {
+  if (num === null || num === undefined) return '0';
+  return new Intl.NumberFormat('es-ES').format(num);
 };
 
+/**
+ * Formatea moneda en formato USD
+ */
+export const formatCurrency = (amount, currency = 'USD') => {
+  if (amount === null || amount === undefined) return '$0';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  }).format(amount);
+};
+
+/**
+ * Formatea fechas de manera relativa (hace X tiempo)
+ */
 export const formatRelativeTime = (date) => {
   if (!date) return '';
-  const dateObj = typeof date === 'string' ? new Date(date) : date;
-  if (!isValid(dateObj)) return '';
-  return formatDistanceToNow(dateObj, { addSuffix: true, locale: es });
+  
+  try {
+    const now = new Date();
+    const targetDate = new Date(date);
+    const diffMs = now - targetDate;
+    const diffSeconds = Math.floor(diffMs / 1000);
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffSeconds < 60) {
+      return 'Hace unos segundos';
+    } else if (diffMinutes < 60) {
+      return `Hace ${diffMinutes} minuto${diffMinutes !== 1 ? 's' : ''}`;
+    } else if (diffHours < 24) {
+      return `Hace ${diffHours} hora${diffHours !== 1 ? 's' : ''}`;
+    } else if (diffDays < 7) {
+      return `Hace ${diffDays} día${diffDays !== 1 ? 's' : ''}`;
+    } else {
+      return targetDate.toLocaleDateString('es-ES');
+    }
+  } catch (_err) {
+    return '';
+  }
 };
 
-// Formatear tamaños de archivo
+/**
+ * Formatea el tamaño de archivos
+ */
 export const formatFileSize = (bytes) => {
-  if (!bytes) return '0 Bytes';
+  if (bytes === 0) return '0 Bytes';
+  
   const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
+  
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-// Formatear números
-export const formatNumber = (number, options = {}) => {
-  if (number === null || number === undefined) return '';
-  return new Intl.NumberFormat('es-ES', options).format(number);
-};
-
-// Formatear porcentajes
-export const formatPercentage = (value, decimals = 1) => {
-  if (value === null || value === undefined) return '';
-  return `${parseFloat(value).toFixed(decimals)}%`;
-};
-
-// Truncar texto
-export const truncateText = (text, maxLength = 100) => {
+/**
+ * Trunca texto con puntos suspensivos
+ */
+export const truncateText = (text, maxLength = 50) => {
   if (!text) return '';
   if (text.length <= maxLength) return text;
   return text.substring(0, maxLength) + '...';
 };
 
-// Generar colores para gráficos
-export const generateChartColors = (count) => {
-  const colors = [
-    '#0066CC', '#6366F1', '#10B981', '#F59E0B', '#EF4444',
-    '#8B5CF6', '#06B6D4', '#84CC16', '#F97316', '#EC4899'
-  ];
-  
-  const result = [];
-  for (let i = 0; i < count; i++) {
-    result.push(colors[i % colors.length]);
-  }
-  return result;
+/**
+ * Capitaliza la primera letra de una cadena
+ */
+export const capitalize = (str) => {
+  if (!str) return '';
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 };
 
-// Descargar archivo
-export const downloadFile = (blob, filename) => {
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
-};
-
-// Validar email
-export const isValidEmail = (email) => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
-};
-
-// Obtener iniciales del nombre
-export const getInitials = (name) => {
-  if (!name) return '';
-  return name
-    .split(' ')
-    .map(word => word.charAt(0).toUpperCase())
-    .slice(0, 2)
-    .join('');
-};
-
-// Generar color basado en string
+/**
+ * Genera un color basado en una cadena (para avatares, etc.)
+ */
 export const getColorFromString = (str) => {
-  if (!str) return '#6B7280';
+  if (!str) return '#6366F1';
   
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -104,14 +94,54 @@ export const getColorFromString = (str) => {
   }
   
   const colors = [
-    '#0066CC', '#6366F1', '#10B981', '#F59E0B', '#EF4444',
-    '#8B5CF6', '#06B6D4', '#84CC16', '#F97316', '#EC4899'
+    '#EF4444', '#F97316', '#F59E0B', '#EAB308',
+    '#84CC16', '#22C55E', '#10B981', '#14B8A6',
+    '#06B6D4', '#0EA5E9', '#3B82F6', '#6366F1',
+    '#8B5CF6', '#A855F7', '#D946EF', '#EC4899'
   ];
   
   return colors[Math.abs(hash) % colors.length];
 };
 
-// Debounce function
+/**
+ * Valida formato de email
+ */
+export const isValidEmail = (email) => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
+/**
+ * Valida formato de contraseña segura
+ */
+export const validatePassword = (password) => {
+  const errors = [];
+  
+  if (password.length < 8) {
+    errors.push('Debe tener al menos 8 caracteres');
+  }
+  
+  if (!/[A-Z]/.test(password)) {
+    errors.push('Debe contener al menos una mayúscula');
+  }
+  
+  if (!/[a-z]/.test(password)) {
+    errors.push('Debe contener al menos una minúscula');
+  }
+  
+  if (!/\d/.test(password)) {
+    errors.push('Debe contener al menos un número');
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+};
+
+/**
+ * Debounce function para optimizar búsquedas
+ */
 export const debounce = (func, wait) => {
   let timeout;
   return function executedFunction(...args) {
@@ -124,47 +154,174 @@ export const debounce = (func, wait) => {
   };
 };
 
-// Sleep function para delays
-export const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Verificar si es móvil
-export const isMobile = () => {
-  return window.innerWidth < 768;
+/**
+ * Convierte objeto a query string
+ */
+export const objectToQueryString = (obj) => {
+  const params = new URLSearchParams();
+  
+  Object.keys(obj).forEach(key => {
+    if (obj[key] !== null && obj[key] !== undefined && obj[key] !== '') {
+      params.append(key, obj[key]);
+    }
+  });
+  
+  return params.toString();
 };
 
-// Scroll suave a elemento
-export const scrollToElement = (elementId, offset = 0) => {
-  const element = document.getElementById(elementId);
-  if (element) {
-    const elementPosition = element.getBoundingClientRect().top;
-    const offsetPosition = elementPosition + window.pageYOffset - offset;
-    
-    window.scrollTo({
-      top: offsetPosition,
-      behavior: 'smooth'
-    });
-  }
+/**
+ * Descarga archivo desde blob
+ */
+export const downloadBlob = (blob, filename) => {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
 };
 
-// Copiar al portapapeles
+/**
+ * Copia texto al portapapeles
+ */
 export const copyToClipboard = async (text) => {
   try {
     await navigator.clipboard.writeText(text);
     return true;
   } catch (_err) {
-    // Fallback para navegadores más antiguos
+    // Fallback para navegadores que no soportan clipboard API
     const textArea = document.createElement('textarea');
     textArea.value = text;
     document.body.appendChild(textArea);
-    textArea.focus();
     textArea.select();
-    try {
-      document.execCommand('copy');
-      return true;
-    } catch (_err) {
-      return false;
-    } finally {
-      document.body.removeChild(textArea);
-    }
+    document.execCommand('copy');
+    document.body.removeChild(textArea);
+    return true;
   }
+};
+
+/**
+ * Genera un ID único
+ */
+export const generateId = () => {
+  return Math.random().toString(36).substr(2, 9);
+};
+
+/**
+ * Calcula el porcentaje entre dos números
+ */
+export const calculatePercentage = (value, total) => {
+  if (total === 0) return 0;
+  return Math.round((value / total) * 100);
+};
+
+/**
+ * Ordena array de objetos por una propiedad
+ */
+export const sortBy = (array, key, direction = 'asc') => {
+  return [...array].sort((a, b) => {
+    const aVal = a[key];
+    const bVal = b[key];
+    
+    if (aVal < bVal) return direction === 'asc' ? -1 : 1;
+    if (aVal > bVal) return direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+};
+
+/**
+ * Agrupa array de objetos por una propiedad
+ */
+export const groupBy = (array, key) => {
+  return array.reduce((groups, item) => {
+    const group = item[key];
+    groups[group] = groups[group] || [];
+    groups[group].push(item);
+    return groups;
+  }, {});
+};
+
+/**
+ * Verifica si una URL es válida
+ */
+export const isValidUrl = (string) => {
+  try {
+    new URL(string);
+    return true;
+  } catch (_err) {
+    return false;
+  }
+};
+
+/**
+ * Convierte archivo a base64
+ */
+export const fileToBase64 = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = error => reject(error);
+  });
+};
+
+/**
+ * Manejo de errores HTTP con mensajes amigables
+ */
+export const getErrorMessage = (error) => {
+  if (error.response) {
+    // Error del servidor
+    const status = error.response.status;
+    const data = error.response.data;
+    
+    switch (status) {
+      case 400:
+        return data.detail || data.message || 'Datos inválidos';
+      case 401:
+        return 'No autorizado. Por favor inicia sesión';
+      case 403:
+        return 'No tienes permisos para realizar esta acción';
+      case 404:
+        return 'Recurso no encontrado';
+      case 422:
+        return 'Error de validación en los datos';
+      case 429:
+        return 'Demasiadas solicitudes. Intenta más tarde';
+      case 500:
+        return 'Error interno del servidor';
+      default:
+        return data.detail || data.message || 'Error en el servidor';
+    }
+  } else if (error.request) {
+    // Error de red
+    return 'Error de conexión. Verifica tu internet';
+  } else {
+    // Error en la configuración
+    return error.message || 'Error inesperado';
+  }
+};
+
+/**
+ * Formatea el progreso como porcentaje
+ */
+export const formatProgress = (current, total) => {
+  if (total === 0) return '0%';
+  return `${Math.round((current / total) * 100)}%`;
+};
+
+/**
+ * Convierte bytes a formato legible
+ */
+export const bytesToSize = (bytes, decimals = 2) => {
+  if (bytes === 0) return '0 Bytes';
+  
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+  
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 };

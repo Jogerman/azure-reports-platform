@@ -24,7 +24,7 @@ const LoginPage = () => {
         email: data.email,
         password: data.password
       });
-      navigate('/dashboard');
+      navigate('/app');
     } catch (error) {
       // El error ya se maneja en el contexto
       console.error('Error en login:', error);
@@ -199,9 +199,11 @@ const LoginPage = () => {
               <button
                 type="button"
                 className="w-full flex justify-center items-center px-4 py-3 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-                onClick={() => {
-                  toast.info('Integración con Microsoft próximamente');
-                }}
+              onClick={() => {
+               const handleMicrosoftLogin = () => {
+                window.location.href = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'}/auth/microsoft/login/`;
+                };
+              }}
               >
                 <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                   <path

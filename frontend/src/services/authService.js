@@ -1,10 +1,25 @@
 // frontend/src/services/authService.js
 import api from './api';
 
+// Mock data para desarrollo
+const MOCK_USER = {
+  id: 1,
+  username: 'admin',
+  email: 'admin@azurereports.com',
+  first_name: 'Admin',
+  last_name: 'User'
+};
+
+const DEMO_CREDENTIALS = {
+  email: 'admin@azurereports.com',
+  password: 'admin123'
+};
+
 export const authService = {
   // Login con credenciales
   login: async (credentials) => {
     try {
+      // Primero intentar con el backend real
       const response = await api.post('/auth/login/', credentials);
       const { access, refresh, user } = response.data;
       
@@ -14,7 +29,26 @@ export const authService = {
       
       return { user, token: access };
     } catch (error) {
-      throw new Error(error.response?.data?.detail || 'Error de inicio de sesión');
+      // Si el backend no está disponible y son las credenciales demo, usar mock
+      if (error.code === 'ERR_NETWORK' || error.response?.status >= 500) {
+        if (credentials.email === DEMO_CREDENTIALS.email && 
+            credentials.password === DEMO_CREDENTIALS.password) {
+          
+          console.log('🔧 Modo desarrollo: usando autenticación mock');
+          
+          // Simular token JWT mock
+          const mockToken = 'mock-jwt-token-for-development';
+          
+          localStorage.setItem('token', mockToken);
+          localStorage.setItem('refreshToken', mockToken);
+          localStorage.setItem('user', JSON.stringify(MOCK_USER));
+          
+          return { user: MOCK_USER, token: mockToken };
+        }
+      }
+      
+      // Re-lanzar error original para otros casos
+      throw new Error(error.response?.data?.detail || error.message || 'Error de inicio de sesión');
     }
   },
 
@@ -52,6 +86,11 @@ export const authService = {
       const response = await api.get('/auth/users/profile/');
       return response.data;
     } catch (error) {
+      // Si hay un usuario mock en localStorage, devolverlo
+      const mockUser = localStorage.getItem('user');
+      if (mockUser && localStorage.getItem('token') === 'mock-jwt-token-for-development') {
+        return JSON.parse(mockUser);
+      }
       throw new Error('Error obteniendo perfil de usuario');
     }
   },
@@ -72,6 +111,11 @@ export const authService = {
     try {
       const refreshToken = localStorage.getItem('refreshToken');
       if (!refreshToken) throw new Error('No refresh token available');
+      
+      // Si es mock token, devolverlo tal como está
+      if (refreshToken === 'mock-jwt-token-for-development') {
+        return refreshToken;
+      }
       
       const response = await api.post('/auth/refresh/', {
         refresh: refreshToken
@@ -104,4 +148,4 @@ export const authService = {
       return null;
     }
   }
-};
+};  

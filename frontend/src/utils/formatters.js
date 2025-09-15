@@ -328,3 +328,49 @@ export const formatFileName = (fileName, maxLength = 30) => {
   
   return `${truncatedName}...${extension}`;
 };
+
+/**
+ * Formatea tipo de reporte
+ */
+export const formatReportType = (type) => {
+  const types = {
+    'azure_advisor': 'Azure Advisor',
+    'security': 'Seguridad',
+    'cost': 'Costos',
+    'performance': 'Rendimiento',
+    'reliability': 'Confiabilidad'
+  };
+  
+  return types[type] || type || 'General';
+};
+
+/**
+ * Formatea fechas de manera relativa (hace X tiempo) - duplicado de helpers para compatibilidad
+ */
+export const formatRelativeTime = (date) => {
+  if (!date) return '';
+  
+  try {
+    const now = new Date();
+    const targetDate = new Date(date);
+    const diffMs = now - targetDate;
+    const diffSeconds = Math.floor(diffMs / 1000);
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffSeconds < 60) {
+      return 'Hace unos segundos';
+    } else if (diffMinutes < 60) {
+      return `Hace ${diffMinutes} minuto${diffMinutes !== 1 ? 's' : ''}`;
+    } else if (diffHours < 24) {
+      return `Hace ${diffHours} hora${diffHours !== 1 ? 's' : ''}`;
+    } else if (diffDays < 7) {
+      return `Hace ${diffDays} día${diffDays !== 1 ? 's' : ''}`;
+    } else {
+      return targetDate.toLocaleDateString('es-ES');
+    }
+  } catch (_err) {
+    return '';
+  }
+};

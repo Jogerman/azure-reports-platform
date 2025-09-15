@@ -136,11 +136,21 @@ export const useStorageFiles = (filters = {}) => {
   });
 };
 
-// Hook para vista previa de reporte
-export const useReportPreview = (reportId) => {
-  return useQuery({
-    queryKey: ['reportPreview', reportId],
-    queryFn: () => reportService.getReportPreview(reportId),
-    enabled: !!reportId,
+// Hook para crear reportes
+export const useCreateReport = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: reportService.generateReport,
+    onSuccess: (data) => {
+      // Invalidar caché de reportes
+      queryClient.invalidateQueries(['reports']);
+      queryClient.invalidateQueries(['dashboardStats']);
+      toast.success('Reporte creado exitosamente');
+    },
+    onError: (error) => {
+      const message = error.response?.data?.detail || 'Error al crear reporte';
+      toast.error(message);
+    }
   });
 };

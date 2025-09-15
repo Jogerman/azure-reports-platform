@@ -1,309 +1,273 @@
-/* eslint-disable no-unused-vars */
 // src/pages/Profile.jsx
 import React, { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { 
-  User, 
-  Camera, 
-  Save,
-  Mail,
-  Phone,
-  MapPin,
-  Briefcase,
-  Calendar,
-  Shield,
-  Award
-} from 'lucide-react';
+import { motion } from 'framer-motion';
+import { User, Mail, Building, Save, Camera, Lock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { formatDate } from '../utils/helpers';
-import toast from 'react-hot-toast';
 
 const Profile = () => {
-  const { user, updateProfile, loading } = useAuth();
+  const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
-  
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    reset,
-  } = useForm({
-    defaultValues: {
-      first_name: user?.first_name || '',
-      last_name: user?.last_name || '',
-      email: user?.email || '',
-      phone_number: user?.phone_number || '',
-      department: user?.department || '',
-      job_title: user?.job_title || '',
-    }
+  const [formData, setFormData] = useState({
+    first_name: user?.first_name || '',
+    last_name: user?.last_name || '',
+    email: user?.email || '',
+    department: user?.department || '',
+    job_title: user?.job_title || '',
+    phone: user?.phone || ''
   });
 
-  const onSubmit = async (data) => {
-    try {
-      await updateProfile(data);
-      setIsEditing(false);
-      toast.success('Perfil actualizado exitosamente');
-    } catch (_error) {
-      toast.error('Error al actualizar el perfil');
-    }
+  const handleInputChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
   };
 
-  const handleCancel = () => {
-    reset();
+  const handleSave = () => {
+    // Aquí iría la lógica para actualizar el perfil
     setIsEditing(false);
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white">
-        <div className="flex items-center space-x-6">
-          <div className="relative">
-            {user?.profile_picture ? (
-              <img
-                src={user.profile_picture}
-                alt="Profile"
-                className="w-24 h-24 rounded-full object-cover border-4 border-white/20"
-              />
-            ) : (
-              <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center">
-                <User className="w-12 h-12" />
-              </div>
-            )}
-            <button className="absolute bottom-0 right-0 w-8 h-8 bg-white text-gray-600 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors">
-              <Camera className="w-4 h-4" />
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-8 text-white"
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Mi Perfil</h1>
+            <p className="text-blue-100 text-lg">
+              Gestiona tu información personal y preferencias
+            </p>
+          </div>
+          <div className="hidden md:block">
+            <div className="w-20 h-20 bg-white/20 rounded-2xl flex items-center justify-center">
+              <User className="w-10 h-10" />
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Foto de perfil */}
+        <motion.div
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="bg-white rounded-xl shadow-soft border border-gray-200 p-6"
+        >
+          <div className="text-center">
+            <div className="relative inline-block mb-4">
+              {user?.profile_picture ? (
+                <img
+                  className="w-24 h-24 rounded-full object-cover"
+                  src={user.profile_picture}
+                  alt="Perfil"
+                />
+              ) : (
+                <div className="w-24 h-24 bg-gradient-to-r from-primary-400 to-secondary-400 rounded-full flex items-center justify-center">
+                  <User className="w-12 h-12 text-white" />
+                </div>
+              )}
+              <button className="absolute bottom-0 right-0 p-2 bg-white rounded-full shadow-lg border border-gray-200 hover:bg-gray-50">
+                <Camera className="w-4 h-4 text-gray-600" />
+              </button>
+            </div>
+            
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">
+              {user?.first_name ? `${user.first_name} ${user.last_name}` : user?.username}
+            </h3>
+            <p className="text-gray-600 text-sm">{user?.email}</p>
+            
+            <button className="mt-4 btn-secondary text-sm">
+              Cambiar Foto
             </button>
+          </div>
+        </motion.div>
+
+        {/* Información personal */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="lg:col-span-2 bg-white rounded-xl shadow-soft border border-gray-200 p-6"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-semibold text-gray-900">Información Personal</h3>
+            <button
+              onClick={() => setIsEditing(!isEditing)}
+              className="btn-secondary text-sm"
+            >
+              {isEditing ? 'Cancelar' : 'Editar'}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Nombre
+              </label>
+              <input
+                type="text"
+                name="first_name"
+                value={formData.first_name}
+                onChange={handleInputChange}
+                disabled={!isEditing}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Apellido
+              </label>
+              <input
+                type="text"
+                name="last_name"
+                value={formData.last_name}
+                onChange={handleInputChange}
+                disabled={!isEditing}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Email
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  disabled={!isEditing}
+                  className="input-field pl-10"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Teléfono
+              </label>
+              <input
+                type="tel"
+                name="phone"
+                value={formData.phone}
+                onChange={handleInputChange}
+                disabled={!isEditing}
+                className="input-field"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Departamento
+              </label>
+              <div className="relative">
+                <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  name="department"
+                  value={formData.department}
+                  onChange={handleInputChange}
+                  disabled={!isEditing}
+                  className="input-field pl-10"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Cargo
+              </label>
+              <input
+                type="text"
+                name="job_title"
+                value={formData.job_title}
+                onChange={handleInputChange}
+                disabled={!isEditing}
+                className="input-field"
+              />
+            </div>
+          </div>
+
+          {isEditing && (
+            <div className="mt-6 flex justify-end space-x-3">
+              <button
+                onClick={() => setIsEditing(false)}
+                className="btn-secondary"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSave}
+                className="btn-primary flex items-center space-x-2"
+              >
+                <Save className="w-5 h-5" />
+                <span>Guardar Cambios</span>
+              </button>
+            </div>
+          )}
+        </motion.div>
+      </div>
+
+      {/* Cambiar contraseña */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="bg-white rounded-xl shadow-soft border border-gray-200 p-6"
+      >
+        <div className="flex items-center space-x-3 mb-6">
+          <Lock className="w-6 h-6 text-red-600" />
+          <h3 className="text-lg font-semibold text-gray-900">Seguridad</h3>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Contraseña actual
+            </label>
+            <input
+              type="password"
+              className="input-field"
+              placeholder="••••••••"
+            />
           </div>
           
           <div>
-            <h1 className="text-3xl font-bold mb-2">
-              {user?.first_name ? `${user.first_name} ${user.last_name}` : user?.username}
-            </h1>
-            <p className="text-blue-100 text-lg">
-              {user?.job_title || 'Usuario'} {user?.department && `• ${user.department}`}
-            </p>
-            <div className="flex items-center space-x-4 mt-3 text-blue-100">
-              <div className="flex items-center">
-                <Calendar className="w-4 h-4 mr-1" />
-                <span>Miembro desde {formatDate(user?.created_at, 'MMM yyyy')}</span>
-              </div>
-              {user?.is_azure_user && (
-                <div className="flex items-center">
-                  <Shield className="w-4 h-4 mr-1" />
-                  <span>Azure AD</span>
-                </div>
-              )}
-            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Nueva contraseña
+            </label>
+            <input
+              type="password"
+              className="input-field"
+              placeholder="••••••••"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Confirmar contraseña
+            </label>
+            <input
+              type="password"
+              className="input-field"
+              placeholder="••••••••"
+            />
           </div>
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Información del perfil */}
-        <div className="lg:col-span-2">
-          <div className="bg-white rounded-xl shadow-soft border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-gray-900">Información Personal</h3>
-              {!isEditing ? (
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="btn-secondary"
-                >
-                  Editar Perfil
-                </button>
-              ) : (
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={handleCancel}
-                    className="btn-ghost"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={handleSubmit(onSubmit)}
-                    disabled={loading}
-                    className="btn-primary flex items-center space-x-2"
-                  >
-                    <Save className="w-4 h-4" />
-                    <span>Guardar</span>
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {isEditing ? (
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Nombre
-                    </label>
-                    <input
-                      type="text"
-                      {...register('first_name', { required: 'El nombre es requerido' })}
-                      className={`input-field ${errors.first_name ? 'border-red-500' : ''}`}
-                    />
-                    {errors.first_name && (
-                      <p className="mt-1 text-sm text-red-600">{errors.first_name.message}</p>
-                    )}
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Apellido
-                    </label>
-                    <input
-                      type="text"
-                      {...register('last_name', { required: 'El apellido es requerido' })}
-                      className={`input-field ${errors.last_name ? 'border-red-500' : ''}`}
-                    />
-                    {errors.last_name && (
-                      <p className="mt-1 text-sm text-red-600">{errors.last_name.message}</p>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    {...register('email', { 
-                      required: 'El email es requerido',
-                      pattern: {
-                        value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-                        message: 'Email inválido'
-                      }
-                    })}
-                    className={`input-field ${errors.email ? 'border-red-500' : ''}`}
-                  />
-                  {errors.email && (
-                    <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Teléfono
-                    </label>
-                    <input
-                      type="tel"
-                      {...register('phone_number')}
-                      className="input-field"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Departamento
-                    </label>
-                    <input
-                      type="text"
-                      {...register('department')}
-                      className="input-field"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Cargo
-                  </label>
-                  <input
-                    type="text"
-                    {...register('job_title')}
-                    className="input-field"
-                  />
-                </div>
-              </form>
-            ) : (
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="flex items-center space-x-3">
-                    <Mail className="w-5 h-5 text-gray-400" />
-                    <div>
-                      <p className="text-sm text-gray-500">Email</p>
-                      <p className="font-medium text-gray-900">{user?.email}</p>
-                    </div>
-                  </div>
-                  
-                  {user?.phone_number && (
-                    <div className="flex items-center space-x-3">
-                      <Phone className="w-5 h-5 text-gray-400" />
-                      <div>
-                        <p className="text-sm text-gray-500">Teléfono</p>
-                        <p className="font-medium text-gray-900">{user.phone_number}</p>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {user?.department && (
-                    <div className="flex items-center space-x-3">
-                      <MapPin className="w-5 h-5 text-gray-400" />
-                      <div>
-                        <p className="text-sm text-gray-500">Departamento</p>
-                        <p className="font-medium text-gray-900">{user.department}</p>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {user?.job_title && (
-                    <div className="flex items-center space-x-3">
-                      <Briefcase className="w-5 h-5 text-gray-400" />
-                      <div>
-                        <p className="text-sm text-gray-500">Cargo</p>
-                        <p className="font-medium text-gray-900">{user.job_title}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+        
+        <div className="mt-6 flex justify-end">
+          <button className="btn-primary">
+            Cambiar Contraseña
+          </button>
         </div>
-
-        {/* Estadísticas y actividad */}
-        <div className="space-y-6">
-          {/* Estadísticas del usuario */}
-          <div className="bg-white rounded-xl shadow-soft border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Estadísticas</h3>
-            <div className="space-y-4">
-              {[
-                { label: 'Reportes Generados', value: '24', icon: Award, color: 'text-blue-600' },
-                { label: 'Archivos Subidos', value: '18', icon: User, color: 'text-green-600' },
-                { label: 'Tiempo Ahorrado', value: '40h', icon: Calendar, color: 'text-purple-600' },
-              ].map((stat) => (
-                <div key={stat.label} className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <stat.icon className={`w-5 h-5 ${stat.color}`} />
-                    <span className="text-gray-600">{stat.label}</span>
-                  </div>
-                  <span className="font-semibold text-gray-900">{stat.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Actividad reciente */}
-          <div className="bg-white rounded-xl shadow-soft border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Actividad Reciente</h3>
-            <div className="space-y-3">
-              {[
-                { action: 'Reporte generado', time: 'Hace 2 horas' },
-                { action: 'Archivo CSV subido', time: 'Hace 1 día' },
-                { action: 'Perfil actualizado', time: 'Hace 3 días' },
-              ].map((activity, index) => (
-                <div key={index} className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">{activity.action}</span>
-                  <span className="text-gray-400">{activity.time}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

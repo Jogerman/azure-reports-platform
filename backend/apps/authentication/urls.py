@@ -1,4 +1,4 @@
-# apps/authentication/urls.py
+# backend/apps/authentication/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
@@ -13,4 +13,8 @@ urlpatterns = [
     path('', include(router.urls)),
     path('login/', views.CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    
+    # Microsoft OAuth para API
+    path('microsoft/login/', views.microsoft_login_api, name='microsoft_login_api'),
+    path('microsoft/callback/', views.microsoft_callback_api, name='microsoft_callback_api'),
 ]

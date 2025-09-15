@@ -22,7 +22,7 @@ urlpatterns = [
     
     # API endpoints
     path('api/auth/', include('apps.authentication.urls')),
-    path('api/', include('apps.reports.urls')),
+    path('api/reports/', include('apps.reports.urls')), 
     path('api/storage/', include('apps.storage.urls')),
     path('api/analytics/', include('apps.analytics.urls')),
     
@@ -31,9 +31,10 @@ urlpatterns = [
     
     # API root
     path('api/', include(router.urls)),
+
 ]
 
-# Servir archivos estáticos en desarrollo
+# Servir archivos media en desarrollo
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

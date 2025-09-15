@@ -108,8 +108,8 @@ class ReportViewSet(viewsets.ModelViewSet):
         
         # Devolver URL de descarga o archivo directo
         try:
-            from .services.storage_service import get_blob_file
-            file_content = get_blob_file(report.pdf_azure_blob_name)
+            from apps.storage.services.azure_storage_service import get_azure_file_url
+            file_content = get_azure_file_url(report.pdf_file_url)
             
             response = FileResponse(
                 file_content,
@@ -137,7 +137,7 @@ class ReportViewSet(viewsets.ModelViewSet):
         
         # Generar preview si no existe
         if not report.html_preview_url:
-            from .services.report_service import generate_html_preview
+            from apps.storage.services.report_service import generate_html_preview
             html_content = generate_html_preview(report)
             return Response({'html_content': html_content})
         

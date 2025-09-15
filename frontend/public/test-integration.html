@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Frontend-Backend Connection</title>
+</head>
+<body>
+    <h1>Azure Advisor Analyzer - Integration Test</h1>
+    
+    <div id="results"></div>
+    
+    <button onclick="testConnection()">Test Connection</button>
+    <button onclick="testLogin()">Test Login</button>
+    <button onclick="testProtectedEndpoint()">Test Protected Endpoint</button>
+
+    <script>
+        const API_BASE = 'http://localhost:8000/api';
+        let authToken = null;
+
+        function log(message, type = 'info') {
+            const div = document.getElementById('results');
+            const p = document.createElement('p');
+            p.style.color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'black';
+            p.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+            div.appendChild(p);
+        }
+
+        async function testConnection() {
+            try {
+                const response = await fetch(`${API_BASE}/health/`);
+                const data = await response.json();
+                log(`✅ Backend connected: ${data.status}`, 'success');
+            } catch (error) {
+                log(`❌ Connection failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function testLogin() {
+            try {
+                const response = await fetch(`${API_BASE}/auth/login/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'jogerman.17@gmail.com',  // Cambiar por usuario real
+                        password: 'Epo1052@!A**'         // Cambiar por password real
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    authToken = data.access;
+                    log(`✅ Login successful: Token obtained`, 'success');
+                } else {
+                    const error = await response.json();
+                    log(`❌ Login failed: ${error.detail || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ Login error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testProtectedEndpoint() {
+            if (!authToken) {
+                log('❌ No auth token. Login first.', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/users/profile/`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`✅ Protected endpoint working: User ${data.username}`, 'success');
+                } else {
+                    log(`❌ Protected endpoint failed: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ Protected endpoint error: ${error.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>

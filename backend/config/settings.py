@@ -16,6 +16,10 @@ DEBUG = config('DEBUG', default=True, cast=bool)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
 
+# Crear directorio de logs automáticamente
+LOGS_DIR = BASE_DIR / 'logs'
+LOGS_DIR.mkdir(exist_ok=True)
+
 # Application definition
 DJANGO_APPS = [
     'django.contrib.admin',
@@ -180,7 +184,7 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = DEBUG  # Solo para desarrollo
+CORS_ALLOW_ALL_ORIGINS = config('DEBUG', default=False, cast=bool)  # Solo en desarrollo
 
 # Agregar estos headers adicionales:
 CORS_ALLOW_HEADERS = [
@@ -248,14 +252,32 @@ LOGGING = {
         },
     },
     'handlers': {
-        'file': {
+        'microsoft_oauth_file': {
             'level': 'INFO',
-            'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'logs' / 'django.log',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': LOGS_DIR / 'microsoft_oauth.log',
+            'maxBytes': 1024*1024*5,  # 5MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },        
+        'django_file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': LOGS_DIR / 'django.log',
+            'maxBytes': 1024*1024*10,  # 10MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+        'reports_file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': LOGS_DIR / 'reports.log',
+            'maxBytes': 1024*1024*5,  # 5MB
+            'backupCount': 3,
             'formatter': 'verbose',
         },
         'console': {
-            'level': 'INFO',
+            'level': 'DEBUG' if DEBUG else 'INFO',
             'class': 'logging.StreamHandler',
             'formatter': 'simple',
         },
@@ -270,13 +292,43 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
-        'apps': {
-            'handlers': ['console', 'file'],
+        'apps.authentication.services': {
+            'handlers': ['microsoft_oauth_file', 'console'],
             'level': 'INFO',
             'propagate': False,
         },
+        'apps.reports': {
+            'handlers': ['reports_file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django': {
+            'handlers': ['django_file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['django_file', 'console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+    },
+       'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
     },
 }
+if DEBUG:
+    # En desarrollo, mostrar más logs en consola
+    LOGGING['handlers']['console']['level'] = 'DEBUG'
+    
+    # Agregar logger para SQL queries (opcional)
+    LOGGING['loggers']['django.db.backends'] = {
+        'handlers': ['console'],
+        'level': 'DEBUG',
+        'propagate': False,
+    }
+
 
 # Security settings
 SECURE_BROWSER_XSS_FILTER = True
@@ -305,3 +357,19 @@ PDF_MAX_PAGES = config('PDF_MAX_PAGES', default=50, cast=int)
 # Analytics
 ENABLE_ANALYTICS = config('ENABLE_ANALYTICS', default=True, cast=bool)
 ANALYTICS_RETENTION_DAYS = config('ANALYTICS_RETENTION_DAYS', default=90, cast=int)
+
+
+# Microsoft OAuth Settings
+MICROSOFT_OAUTH = {
+    'CLIENT_ID': config('MICROSOFT_CLIENT_ID', default=''),
+    'CLIENT_SECRET': config('MICROSOFT_CLIENT_SECRET', default=''),
+    'TENANT_ID': config('MICROSOFT_TENANT_ID', default='common'),
+    'REDIRECT_URI': config('MICROSOFT_REDIRECT_URI', default='http://localhost:8000/api/auth/microsoft/callback/'),
+    'SCOPES': [
+        'openid',
+        'profile', 
+        'email',
+        'User.Read'
+    ],
+    'ENABLED': bool(config('MICROSOFT_CLIENT_ID', default='')),
+}

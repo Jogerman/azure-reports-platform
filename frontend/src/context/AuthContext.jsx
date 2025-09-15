@@ -113,12 +113,12 @@ export const AuthProvider = ({ children }) => {
     
     try {
       const response = await authService.login(credentials);
-      dispatch({ 
-        type: AUTH_ACTIONS.LOGIN_SUCCESS, 
-        payload: { user: response.user } 
-      });
+     dispatch({ 
+      type: AUTH_ACTIONS.LOGIN_SUCCESS, 
+      payload: { user: { username: credentials.email } } 
+  });
       
-      toast.success(`¡Bienvenido, ${response.user.first_name || response.user.username}!`);
+      toast.success(`¡Bienvenido!`);
       return response;
     } catch (error) {
       const errorMessage = error.response?.data?.detail || 

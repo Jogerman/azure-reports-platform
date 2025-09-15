@@ -21,8 +21,8 @@ def process_csv_file(csv_file_id, file_content=None):
         if file_content:
             df = pd.read_csv(file_content)
         else:
-            from .services.storage_service import download_blob_to_dataframe
-            df = download_blob_to_dataframe(csv_file.azure_blob_name)
+            from apps.storage.services.reportlab_generator import download_file
+            df = download_file(csv_file.azure_blob_name)
         
         # Realizar análisis
         from .analyzers.csv_analyzer import EnhancedCSVAnalyzer
@@ -52,14 +52,14 @@ def generate_report(report_id):
         report = Report.objects.get(id=report_id)
         
         # Generar PDF
-        from .services.report_service import ReportGenerator
+        from apps.storage.services.report_service import ReportGenerator
         generator = ReportGenerator(report)
         pdf_file_path, html_content = generator.generate()
         
         # Subir a Azure Storage
-        from .services.storage_service import upload_blob
+        from apps.storage.services.azure_storage_service import upload_file
         blob_name = f"reports/{report.id}.pdf"
-        blob_url = upload_blob(pdf_file_path, blob_name)
+        blob_url = upload_file(pdf_file_path, blob_name)
         
         # Actualizar reporte
         report.pdf_file_url = blob_url

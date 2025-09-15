@@ -1,6 +1,8 @@
-// src/hooks/useReports.js
+// frontend/src/hooks/useReports.js
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { reportService, dashboardService, storageService } from '../services/api';
+import { reportService } from '../services/reportService';
+import { dashboardService } from '../services/dashboardService';
+import { storageService } from '../services/storageService';
 import toast from 'react-hot-toast';
 
 // Hook para obtener lista de reportes
@@ -55,7 +57,7 @@ export const useGenerateReport = () => {
   
   return useMutation({
     mutationFn: reportService.generateReport,
-    onSuccess: (data) => {
+    onSuccess: (_data) => {
       // Invalidar caché de reportes
       queryClient.invalidateQueries(['reports']);
       queryClient.invalidateQueries(['dashboardStats']);
@@ -142,7 +144,7 @@ export const useCreateReport = () => {
   
   return useMutation({
     mutationFn: reportService.generateReport,
-    onSuccess: (data) => {
+    onSuccess: (_data) => {
       // Invalidar caché de reportes
       queryClient.invalidateQueries(['reports']);
       queryClient.invalidateQueries(['dashboardStats']);

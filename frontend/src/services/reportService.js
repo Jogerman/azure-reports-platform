@@ -1,120 +1,77 @@
-// src/services/reportService.js
+// frontend/src/services/reportService.js
 import api from './api';
 
 export const reportService = {
-  // Obtener reportes del usuario
-  getReports: async (params = {}) => {
-    try {
-      const response = await api.get('/reports/', { params });
-      return response.data;
-    } catch (_error) {
-      throw new Error('Error obteniendo reportes');
-    }
+  // Subir archivo CSV
+  uploadCSV: async (file, onProgress) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await api.post('/reports/csv-upload/', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (progressEvent) => {
+        if (onProgress) {
+          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          onProgress(progress);
+        }
+      },
+    });
+    return response.data;
   },
 
-  // Crear nuevo reporte
-  createReport: async (data) => {
-    try {
-      const response = await api.post('/reports/', data);
-      return response.data;
-    } catch (_error) {
-      throw new Error('Error creando reporte');
-    }
+  // Listar archivos CSV del usuario
+  getCSVFiles: async () => {
+    const response = await api.get('/reports/csv-files/');
+    return response.data;
   },
 
-  // Obtener reporte específico
-  getReport: async (id) => {
-    try {
-      const response = await api.get(`/reports/${id}/`);
-      return response.data;
-    } catch (_error) {
-      throw new Error('Error obteniendo reporte');
-    }
+  // Generar reporte
+  generateReport: async (data) => {
+    const response = await api.post('/reports/generate/', data);
+    return response.data;
+  },
+
+  // Listar reportes del usuario
+  getReports: async (filters = {}) => {
+    const params = new URLSearchParams(filters).toString();
+    const response = await api.get(`/reports/?${params}`);
+    return response.data;
+  },
+
+  // Obtener detalles de un reporte
+  getReportDetails: async (reportId) => {
+    const response = await api.get(`/reports/${reportId}/`);
+    return response.data;
   },
 
   // Descargar reporte PDF
-  downloadReport: async (id) => {
-    try {
-      const response = await api.get(`/reports/${id}/download/`, {
-        responseType: 'blob',
-      });
-      return response.data;
-    } catch (_error) {
-      throw new Error('Error descargando reporte');
-    }
+  downloadReport: async (reportId) => {
+    const response = await api.get(`/reports/${reportId}/download/`, {
+      responseType: 'blob',
+    });
+    
+    // Crear URL para descargar
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `reporte_${reportId}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
   },
 
-  // Obtener preview HTML
-  getReportPreview: async (id) => {
-    try {
-      const response = await api.get(`/reports/${id}/preview/`);
-      return response.data;
-    } catch (_error) {
-      throw new Error('Error obteniendo preview');
-    }
+  // Obtener vista previa HTML del reporte
+  getReportPreview: async (reportId) => {
+    const response = await api.get(`/reports/${reportId}/preview/`);
+    return response.data;
   },
 
-  // Regenerar reporte
-  regenerateReport: async (id) => {
-    try {
-      const response = await api.post(`/reports/${id}/regenerate/`);
-      return response.data;
-    } catch (_error) {
-      throw new Error('Error regenerando reporte');
-    }
-  },
-
-  // Subir archivo CSV
-  uploadCSV: async (file, onProgress) => {
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const response = await api.post('/csv-files/', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round(
-            (progressEvent.loaded * 100) / progressEvent.total
-          );
-          if (onProgress) onProgress(percentCompleted);
-        },
-      });
-      
-      return response.data;
-    } catch (_error) {
-      throw new Error(error.response?.data?.message || 'Error subiendo archivo');
-    }
-  },
-
-  // Obtener archivos CSV
-  getCSVFiles: async (params = {}) => {
-    try {
-      const response = await api.get('/csv-files/', { params });
-      return response.data;
-    } catch (_error) {
-      throw new Error('Error obteniendo archivos CSV');
-    }
-  },
-
-  // Obtener análisis de CSV
-  getCSVAnalysis: async (id) => {
-    try {
-      const response = await api.get(`/csv-files/${id}/analysis_details/`);
-      return response.data;
-    } catch (_error) {
-      throw new Error('Error obteniendo análisis');
-    }
-  },
-
-  // Reprocesar CSV
-  reprocessCSV: async (id) => {
-    try {
-      const response = await api.post(`/csv-files/${id}/reprocess/`);
-      return response.data;
-    } catch (_error) {
-      throw new Error('Error reprocesando archivo');
-    }
-  },
+  // Eliminar reporte
+  deleteReport: async (reportId) => {
+    const response = await api.delete(`/reports/${reportId}/`);
+    return response.data;
+  }
 };

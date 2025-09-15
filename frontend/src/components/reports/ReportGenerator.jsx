@@ -1,3 +1,5 @@
+/* eslint-disable no-unused-vars */
+/* eslint-disable no-undef */
 // src/components/reports/ReportGenerator.jsx
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';

@@ -3,6 +3,7 @@ import React, { createContext, useReducer, useEffect } from 'react';
 import { authService } from '../services/authService';
 import toast from 'react-hot-toast';
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const AuthContext = createContext();
 
 const authReducer = (state, action) => {
@@ -66,6 +67,7 @@ export const AuthProvider = ({ children }) => {
             try {
               const currentUser = await authService.getCurrentUser();
               dispatch({ type: 'LOGIN_SUCCESS', payload: currentUser });
+            // eslint-disable-next-line no-unused-vars
             } catch (_error) {
               dispatch({ type: 'LOGIN_SUCCESS', payload: storedUser });
             }

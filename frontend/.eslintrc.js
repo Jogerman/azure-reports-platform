@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 // frontend/.eslintrc.js
 module.exports = {
   env: {

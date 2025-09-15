@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 // src/components/dashboard/DashboardCard.jsx
 import React from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';

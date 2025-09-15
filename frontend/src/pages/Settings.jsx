@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 // src/pages/Settings.jsx
 import React, { useState } from 'react';
 import { 

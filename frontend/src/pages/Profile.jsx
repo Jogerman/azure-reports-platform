@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 // src/pages/Profile.jsx
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';

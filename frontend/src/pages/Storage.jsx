@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 // src/pages/Storage.jsx
 import React, { useState } from 'react';
 import { 

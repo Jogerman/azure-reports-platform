@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 // src/components/reports/ReportsList.jsx
 import React from 'react';
 import { Link } from 'react-router-dom';

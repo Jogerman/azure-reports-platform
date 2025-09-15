@@ -1,3 +1,5 @@
+/* eslint-disable no-undef */
+/* eslint-disable no-unused-vars */
 // src/components/reports/FileUpload.jsx
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';

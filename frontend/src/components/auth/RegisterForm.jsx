@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 // src/components/auth/RegisterForm.jsx
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';

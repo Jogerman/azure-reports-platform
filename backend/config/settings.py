@@ -147,14 +147,14 @@ REST_FRAMEWORK = {
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
     ],
-    'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle'
-    ],
-    'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/hour',
-        'user': '1000/hour'
-    }
+    #'DEFAULT_THROTTLE_CLASSES': [
+    #    'rest_framework.throttling.AnonRateThrottle',
+    #    'rest_framework.throttling.UserRateThrottle'
+    #],
+    #'DEFAULT_THROTTLE_RATES': {
+    #    'anon': '100/hour',
+    #    'user': '1000/hour'
+    #}
 }
 
 # JWT Settings
@@ -182,6 +182,19 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = DEBUG  # Solo para desarrollo
 
+# Agregar estos headers adicionales:
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
 # Azure settings
 USE_AZURE_STORAGE = config('USE_AZURE_STORAGE', default=False, cast=bool)
 AZURE_ACCOUNT_NAME = config('AZURE_STORAGE_ACCOUNT_NAME', default='')
@@ -194,15 +207,21 @@ MICROSOFT_AUTH_CLIENT_SECRET = config('MICROSOFT_AUTH_CLIENT_SECRET', default=''
 MICROSOFT_AUTH_TENANT_ID = config('MICROSOFT_AUTH_TENANT_ID', default='')
 
 # Cache
+#CACHES = {
+#    'default': {
+#        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+#        'LOCATION': config('REDIS_URL', default='redis://localhost:6379/1'),
+#        'OPTIONS': {
+#            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+#        },
+#        'KEY_PREFIX': 'azure_reports',
+#        'TIMEOUT': 300,
+#    }
+#}
+# CACHE TEMPORAL (USAR ESTO):
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': config('REDIS_URL', default='redis://localhost:6379/1'),
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        },
-        'KEY_PREFIX': 'azure_reports',
-        'TIMEOUT': 300,
+        'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
     }
 }
 

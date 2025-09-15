@@ -2,6 +2,9 @@
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model, login, logout
 from django.shortcuts import render, redirect
@@ -500,3 +503,26 @@ def test_microsoft_config(request):
         </html>
         """
         return HttpResponse(html_content)
+
+class LogoutView(APIView):
+    """Vista para logout que invalida el refresh token"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        try:
+            refresh_token = request.data.get('refresh')
+            if refresh_token:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+            
+            return Response({
+                'message': 'Logout exitoso'
+            }, status=status.HTTP_200_OK)
+        except TokenError:
+            return Response({
+                'error': 'Token inválido'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({
+                'error': 'Error en logout'
+            }, status=status.HTTP_400_BAD_REQUEST)

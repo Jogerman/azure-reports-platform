@@ -13,6 +13,7 @@ urlpatterns = [
     path('', include(router.urls)),
     path('login/', views.CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('logout/', views.LogoutView.as_view(), name='logout'),  # AGREGAR ESTA LÍNEA
     
     # Microsoft OAuth para API
     path('microsoft/login/', views.microsoft_login_api, name='microsoft_login_api'),

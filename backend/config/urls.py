@@ -4,9 +4,17 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
+from django.http import JsonResponse
 
 # Router principal
 router = DefaultRouter()
+
+def health_check(request):
+    return JsonResponse({
+        'status': 'ok',
+        'message': 'Django funcionando correctamente',
+        'database': 'conectado'
+    })
 
 urlpatterns = [
     # Admin

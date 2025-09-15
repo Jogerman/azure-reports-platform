@@ -1,6 +1,6 @@
-// src/context/AuthContext.jsx
+// frontend/src/context/AuthContext.jsx
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
-import { authService } from '../services/api';
+import { authService } from '../services/authService';
 import toast from 'react-hot-toast';
 
 // Estados del contexto de autenticación
@@ -123,6 +123,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       const errorMessage = error.response?.data?.detail || 
                           error.response?.data?.error || 
+                          error.message ||
                           'Error al iniciar sesión';
       
       dispatch({ type: AUTH_ACTIONS.SET_ERROR, payload: errorMessage });
@@ -142,6 +143,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       const errorMessage = error.response?.data?.detail || 
                           error.response?.data?.error || 
+                          error.message ||
                           'Error al crear cuenta';
       
       dispatch({ type: AUTH_ACTIONS.SET_ERROR, payload: errorMessage });

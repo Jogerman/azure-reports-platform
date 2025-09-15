@@ -1,3 +1,4 @@
+// frontend/src/services/authService.js
 import api from './api';
 
 export const authService = {
@@ -12,7 +13,7 @@ export const authService = {
       localStorage.setItem('user', JSON.stringify(user));
       
       return { user, token: access };
-    } catch (_error) {
+    } catch (error) {
       throw new Error(error.response?.data?.detail || 'Error de inicio de sesión');
     }
   },
@@ -22,7 +23,7 @@ export const authService = {
     try {
       const response = await api.post('/auth/register/', userData);
       return response.data;
-    } catch (_error) {
+    } catch (error) {
       const errors = error.response?.data;
       if (errors) {
         const errorMessages = Object.values(errors).flat().join(', ');
@@ -36,7 +37,7 @@ export const authService = {
   logout: async () => {
     try {
       await api.post('/auth/logout/');
-    } catch (_error) {
+    } catch (error) {
       console.error('Logout error:', error);
     } finally {
       localStorage.removeItem('token');
@@ -50,7 +51,7 @@ export const authService = {
     try {
       const response = await api.get('/auth/users/profile/');
       return response.data;
-    } catch (_error) {
+    } catch (error) {
       throw new Error('Error obteniendo perfil de usuario');
     }
   },
@@ -61,7 +62,7 @@ export const authService = {
       const response = await api.patch('/auth/users/update_profile/', userData);
       localStorage.setItem('user', JSON.stringify(response.data));
       return response.data;
-    } catch (_error) {
+    } catch (error) {
       throw new Error('Error actualizando perfil');
     }
   },
@@ -79,7 +80,7 @@ export const authService = {
       const { access } = response.data;
       localStorage.setItem('token', access);
       return access;
-    } catch (_error) {
+    } catch (error) {
       localStorage.removeItem('token');
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('user');

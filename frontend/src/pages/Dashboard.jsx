@@ -2,388 +2,474 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
-  FileText, 
-  Upload, 
   BarChart3, 
-  Shield, 
   TrendingUp, 
-  Clock,
+  FileText, 
+  Upload,
+  ArrowUpRight,
+  ArrowDownRight,
   Plus,
-  Download,
+  RefreshCw,
+  Calendar,
+  Activity,
+  Users,
+  Target,
+  Zap,
   Eye,
-  AlertCircle
+  Download
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
-import { useDashboardStats, useRecentReports, useRecentActivity } from '../hooks/useReports';
-import { useNavigate } from 'react-router-dom';
+import { 
+  useDashboardStats, 
+  useRecentReports, 
+  useRecentActivity 
+} from '../hooks/useReports';
+import DashboardCard from '../components/dashboard/DashboardCard';
+import QuickActions from '../components/dashboard/QuickActions';
+import RecentReports from '../components/dashboard/RecentReports';
 import Loading from '../components/common/Loading';
-
-// Componente para tarjetas de estadísticas
-const StatCard = ({ title, value, icon: Icon, trend, color = "blue" }) => {
-  const colorClasses = {
-    blue: "from-blue-500 to-blue-600",
-    green: "from-green-500 to-green-600", 
-    purple: "from-purple-500 to-purple-600",
-    orange: "from-orange-500 to-orange-600"
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="bg-white rounded-xl shadow-soft border border-gray-200 p-6 hover:shadow-medium transition-shadow"
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-gray-600 mb-1">{title}</p>
-          <p className="text-3xl font-bold text-gray-900">{value}</p>
-          {trend && (
-            <div className="flex items-center mt-2">
-              <TrendingUp className="w-4 h-4 text-green-500 mr-1" />
-              <span className="text-sm text-green-600">{trend}</span>
-            </div>
-          )}
-        </div>
-        <div className={`w-16 h-16 bg-gradient-to-r ${colorClasses[color]} rounded-xl flex items-center justify-center`}>
-          <Icon className="w-8 h-8 text-white" />
-        </div>
-      </div>
-    </motion.div>
-  );
-};
-
-// Componente para la acción rápida de crear reporte
-const QuickActionCard = ({ title, description, icon: Icon, onClick, color = "blue" }) => {
-  const colorClasses = {
-    blue: "hover:from-blue-50 hover:to-blue-100 hover:border-blue-200",
-    green: "hover:from-green-50 hover:to-green-100 hover:border-green-200",
-    purple: "hover:from-purple-50 hover:to-purple-100 hover:border-purple-200"
-  };
-
-  return (
-    <motion.div
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      onClick={onClick}
-      className={`bg-white rounded-xl shadow-soft border-2 border-gray-200 p-6 cursor-pointer transition-all duration-200 ${colorClasses[color]}`}
-    >
-      <div className="flex items-start space-x-4">
-        <div className="flex-shrink-0">
-          <div className="w-12 h-12 bg-gradient-to-r from-primary-500 to-secondary-500 rounded-lg flex items-center justify-center">
-            <Icon className="w-6 h-6 text-white" />
-          </div>
-        </div>
-        <div className="flex-1">
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">{title}</h3>
-          <p className="text-gray-600">{description}</p>
-        </div>
-        <Plus className="w-5 h-5 text-gray-400" />
-      </div>
-    </motion.div>
-  );
-};
-
-// Componente para lista de reportes recientes
-const RecentReportItem = ({ report, onView, onDownload }) => {
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'completed': return 'text-green-600 bg-green-100';
-      case 'processing': return 'text-yellow-600 bg-yellow-100';
-      case 'failed': return 'text-red-600 bg-red-100';
-      default: return 'text-gray-600 bg-gray-100';
-    }
-  };
-
-  const getStatusText = (status) => {
-    switch (status) {
-      case 'completed': return 'Completado';
-      case 'processing': return 'Procesando';
-      case 'failed': return 'Error';
-      default: return 'Desconocido';
-    }
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      className="flex items-center justify-between p-4 hover:bg-gray-50 rounded-lg transition-colors"
-    >
-      <div className="flex items-center space-x-4 flex-1">
-        <div className="w-10 h-10 bg-gradient-to-r from-primary-400 to-secondary-400 rounded-lg flex items-center justify-center">
-          <FileText className="w-5 h-5 text-white" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h4 className="text-sm font-medium text-gray-900 truncate">
-            {report.title || `Reporte ${report.id}`}
-          </h4>
-          <div className="flex items-center space-x-2 mt-1">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(report.status)}`}>
-              {getStatusText(report.status)}
-            </span>
-            <span className="text-xs text-gray-500">
-              {report.client_name || 'Sin cliente'}
-            </span>
-          </div>
-        </div>
-      </div>
-      
-      <div className="flex items-center space-x-2">
-        {report.status === 'completed' && (
-          <>
-            <button
-              onClick={() => onView(report)}
-              className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-              title="Ver reporte"
-            >
-              <Eye className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => onDownload(report)}
-              className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-              title="Descargar PDF"
-            >
-              <Download className="w-4 h-4" />
-            </button>
-          </>
-        )}
-        <div className="text-xs text-gray-400">
-          {new Date(report.created_at).toLocaleDateString()}
-        </div>
-      </div>
-    </motion.div>
-  );
-};
+import FileUpload from '../components/reports/FileUpload';
+import { formatCurrency, formatNumber } from '../utils/helpers';
+import toast from 'react-hot-toast';
 
 const Dashboard = () => {
-  const { user } = useAuth();
-  const navigate = useNavigate();
-  const [selectedTimeRange, setSelectedTimeRange] = useState('7d');
-
-  // Hooks para datos del dashboard
-  const { data: stats, isLoading: statsLoading } = useDashboardStats();
+  const [showUpload, setShowUpload] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  
+  const { data: stats, isLoading: statsLoading, error: statsError } = useDashboardStats();
   const { data: recentReports, isLoading: reportsLoading } = useRecentReports(5);
-  const { data: recentActivity, isLoading: activityLoading } = useRecentActivity(5);
+  const { data: recentActivity, isLoading: activityLoading } = useRecentActivity(8);
 
-  const handleCreateReport = () => {
-    navigate('/reports');
+  const handleRefreshDashboard = async () => {
+    setRefreshing(true);
+    try {
+      // Simular actualización
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      toast.success('Dashboard actualizado');
+    } catch (error) {
+      toast.error('Error al actualizar');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
-  const handleUploadFile = () => {
-    navigate('/reports?tab=upload');
+  const handleQuickAction = (action) => {
+    switch (action) {
+      case 'upload':
+        setShowUpload(true);
+        break;
+      case 'create-report':
+        window.location.href = '/app/reports';
+        break;
+      case 'view-history':
+        window.location.href = '/app/history';
+        break;
+      case 'view-storage':
+        window.location.href = '/app/storage';
+        break;
+      default:
+        toast.info(`Acción ${action} en desarrollo`);
+    }
   };
 
-  const handleViewReport = (report) => {
-    navigate(`/reports/${report.id}`);
+  const handleUploadComplete = (uploadedFiles) => {
+    setShowUpload(false);
+    toast.success(`${uploadedFiles.length} archivo(s) subido(s) exitosamente`);
+    // Aquí podrías refrescar las estadísticas
   };
 
-  const handleDownloadReport = (report) => {
-    // Implementar descarga de reporte
-    console.log('Descargar reporte:', report.id);
-  };
-
-  if (statsLoading || reportsLoading || activityLoading) {
+  if (statsLoading) {
     return <Loading fullScreen text="Cargando dashboard..." />;
   }
 
+  // Datos para las tarjetas principales
+  const dashboardCards = [
+    {
+      title: 'Total Reportes',
+      value: formatNumber(stats.totalReports),
+      icon: FileText,
+      trend: { value: 12, isPositive: true, label: 'vs mes anterior' },
+      color: 'blue',
+      description: 'Reportes generados',
+      action: { label: 'Ver todos', onClick: () => handleQuickAction('view-history') }
+    },
+    {
+      title: 'Archivos CSV',
+      value: formatNumber(stats.totalFiles),
+      icon: Upload,
+      trend: { value: 5, isPositive: true, label: 'nuevos esta semana' },
+      color: 'green',
+      description: 'Archivos almacenados',
+      action: { label: 'Ver storage', onClick: () => handleQuickAction('view-storage') }
+    },
+    {
+      title: 'Recomendaciones',
+      value: formatNumber(stats.totalRecommendations),
+      icon: Target,
+      trend: { value: 8, isPositive: true, label: 'implementadas' },
+      color: 'purple',
+      description: 'Total identificadas',
+      action: { label: 'Ver detalles', onClick: () => toast.info('Función en desarrollo') }
+    },
+    {
+      title: 'Ahorro Estimado',
+      value: formatCurrency(stats.potentialSavings),
+      icon: TrendingUp,
+      trend: { value: 23, isPositive: true, label: 'vs proyección anterior' },
+      color: 'orange',
+      description: 'Potencial mensual',
+      action: { label: 'Ver análisis', onClick: () => toast.info('Función en desarrollo') }
+    }
+  ];
+
+  // Acciones rápidas disponibles
+  const quickActions = [
+    {
+      title: 'Subir CSV',
+      description: 'Sube archivos de Azure Advisor',
+      icon: Upload,
+      color: 'blue',
+      action: () => handleQuickAction('upload')
+    },
+    {
+      title: 'Crear Reporte',
+      description: 'Genera análisis inteligente',
+      icon: BarChart3,
+      color: 'purple',
+      action: () => handleQuickAction('create-report')
+    },
+    {
+      title: 'Ver Historial',
+      description: 'Revisa reportes anteriores',
+      icon: Activity,
+      color: 'green',
+      action: () => handleQuickAction('view-history')
+    },
+    {
+      title: 'Gestionar Archivos',
+      description: 'Administra tu almacenamiento',
+      icon: FileText,
+      color: 'orange',
+      action: () => handleQuickAction('view-storage')
+    }
+  ];
+
   return (
     <div className="space-y-8">
-      {/* Header de bienvenida */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-gradient-to-r from-primary-600 to-secondary-600 rounded-2xl p-8 text-white"
-      >
+      {/* Header del Dashboard */}
+      <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold mb-2">
-              ¡Bienvenido, {user?.first_name || user?.username}!
-            </h1>
-            <p className="text-primary-100 text-lg">
+            <h1 className="text-3xl font-bold mb-2">¡Bienvenido de vuelta!</h1>
+            <p className="text-blue-100 text-lg">
               Analiza tus datos de Azure Advisor y genera reportes inteligentes
             </p>
           </div>
-          <div className="hidden md:block">
-            <div className="w-20 h-20 bg-white/20 rounded-2xl flex items-center justify-center">
-              <BarChart3 className="w-10 h-10" />
+          <div className="hidden md:flex items-center space-x-4">
+            <button
+              onClick={handleRefreshDashboard}
+              disabled={refreshing}
+              className="p-3 bg-white/20 rounded-xl hover:bg-white/30 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-6 h-6 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
+            <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
+              <BarChart3 className="w-8 h-8" />
             </div>
           </div>
         </div>
-      </motion.div>
+      </div>
 
-      {/* Estadísticas principales */}
+      {/* Tarjetas de estadísticas principales */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard
-          title="Total Reportes"
-          value={stats?.total_reports || 0}
-          icon={FileText}
-          trend="+12% este mes"
-          color="blue"
-        />
-        <StatCard
-          title="Archivos CSV"
-          value={stats?.total_csv_files || 0}
-          icon={Upload}
-          trend="+5 nuevos"
-          color="green"
-        />
-        <StatCard
-          title="Recomendaciones"
-          value={stats?.total_recommendations || 0}
-          icon={Shield}
-          trend="98% implementadas"
-          color="purple"
-        />
-        <StatCard
-          title="Ahorro Estimado"
-          value={`$${stats?.estimated_savings || 0}`}
-          icon={TrendingUp}
-          trend="+23% vs mes anterior"
-          color="orange"
-        />
+        {dashboardCards.map((card, index) => (
+          <motion.div
+            key={card.title}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: index * 0.1 }}
+          >
+            <DashboardCard {...card} />
+          </motion.div>
+        ))}
       </div>
 
       {/* Acciones rápidas */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <QuickActionCard
-          title="Crear Nuevo Reporte"
-          description="Genera un reporte de Azure Advisor con análisis inteligente"
-          icon={FileText}
-          onClick={handleCreateReport}
-          color="blue"
-        />
-        <QuickActionCard
-          title="Subir Archivo CSV"
-          description="Sube un nuevo archivo CSV para análisis"
-          icon={Upload}
-          onClick={handleUploadFile}
-          color="green"
-        />
+      <div className="bg-white rounded-xl shadow-soft border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+              <Zap className="w-5 h-5 text-blue-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Acciones Rápidas</h3>
+              <p className="text-sm text-gray-500">Tareas frecuentes al alcance de un clic</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {quickActions.map((action, index) => (
+            <motion.button
+              key={action.title}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.3 + index * 0.1 }}
+              onClick={action.action}
+              className="p-4 border border-gray-200 rounded-xl hover:shadow-md hover:border-gray-300 transition-all text-left group"
+            >
+              <div className="flex items-center space-x-3 mb-2">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                  action.color === 'blue' ? 'bg-blue-100 text-blue-600' :
+                  action.color === 'purple' ? 'bg-purple-100 text-purple-600' :
+                  action.color === 'green' ? 'bg-green-100 text-green-600' :
+                  'bg-orange-100 text-orange-600'
+                } group-hover:scale-110 transition-transform`}>
+                  <action.icon className="w-4 h-4" />
+                </div>
+                <ArrowUpRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors" />
+              </div>
+              <h4 className="font-medium text-gray-900 mb-1">{action.title}</h4>
+              <p className="text-sm text-gray-500">{action.description}</p>
+            </motion.button>
+          ))}
+        </div>
       </div>
 
       {/* Contenido principal en dos columnas */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Reportes recientes */}
         <div className="lg:col-span-2">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="bg-white rounded-xl shadow-soft border border-gray-200"
-          >
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-gray-900">
-                  Reportes Recientes
-                </h2>
-                <button
-                  onClick={() => navigate('/reports/history')}
-                  className="text-primary-600 hover:text-primary-700 font-medium text-sm"
-                >
-                  Ver todos
-                </button>
+          <div className="bg-white rounded-xl shadow-soft border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+                  <FileText className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Reportes Recientes</h3>
+                  <p className="text-sm text-gray-500">Tus últimos análisis generados</p>
+                </div>
               </div>
+              <button
+                onClick={() => handleQuickAction('view-history')}
+                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+              >
+                Ver todos
+              </button>
             </div>
-            
-            <div className="p-6">
-              {recentReports && recentReports.length > 0 ? (
-                <div className="space-y-2">
-                  {recentReports.map((report) => (
-                    <RecentReportItem
-                      key={report.id}
-                      report={report}
-                      onView={handleViewReport}
-                      onDownload={handleDownloadReport}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                    No hay reportes aún
-                  </h3>
-                  <p className="text-gray-600 mb-6">
-                    Crea tu primer reporte para comenzar
-                  </p>
-                  <button
-                    onClick={handleCreateReport}
-                    className="btn-primary"
-                  >
-                    Crear Reporte
-                  </button>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        </div>
 
-        {/* Panel lateral con actividad */}
-        <div className="space-y-6">
-          {/* Actividad reciente */}
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="bg-white rounded-xl shadow-soft border border-gray-200"
-          >
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                <Clock className="w-5 h-5 mr-2" />
-                Actividad Reciente
-              </h3>
-            </div>
-            
-            <div className="p-6">
-              {recentActivity && recentActivity.length > 0 ? (
-                <div className="space-y-4">
-                  {recentActivity.map((activity, index) => (
-                    <div key={index} className="flex items-start space-x-3">
-                      <div className="w-2 h-2 bg-primary-500 rounded-full mt-2 flex-shrink-0"></div>
-                      <div>
-                        <p className="text-sm text-gray-900">{activity.description}</p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {new Date(activity.timestamp).toLocaleString()}
-                        </p>
+            {reportsLoading ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="animate-pulse">
+                    <div className="flex items-center space-x-4 p-4 border border-gray-200 rounded-lg">
+                      <div className="w-10 h-10 bg-gray-200 rounded-lg"></div>
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                        <div className="h-3 bg-gray-200 rounded w-1/2"></div>
                       </div>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-gray-500 text-sm">No hay actividad reciente</p>
-              )}
-            </div>
-          </motion.div>
-
-          {/* Alertas o notificaciones */}
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="bg-white rounded-xl shadow-soft border border-gray-200"
-          >
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                <AlertCircle className="w-5 h-5 mr-2" />
-                Alertas
-              </h3>
-            </div>
-            
-            <div className="p-6">
-              <div className="space-y-3">
-                <div className="flex items-start space-x-3 p-3 bg-yellow-50 rounded-lg">
-                  <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-yellow-800">
-                      Recomendaciones pendientes
-                    </p>
-                    <p className="text-xs text-yellow-700 mt-1">
-                      Tienes 15 recomendaciones de seguridad sin implementar
-                    </p>
                   </div>
+                ))}
+              </div>
+            ) : recentReports && recentReports.length > 0 ? (
+              <div className="space-y-4">
+                {recentReports.map((report, index) => (
+                  <motion.div
+                    key={report.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <FileText className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-gray-900 truncate">
+                          {report.title}
+                        </h4>
+                        <div className="flex items-center space-x-2 text-sm text-gray-500">
+                          <span>{report.status === 'completed' ? 'Completado' : 'En proceso'}</span>
+                          <span>•</span>
+                          <span>hace {Math.floor(Math.random() * 24)} horas</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => toast.success('Abriendo vista previa...')}
+                        className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+                        title="Vista previa"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => toast.success('Descargando reporte...')}
+                        className="p-2 text-gray-400 hover:text-green-600 rounded-lg hover:bg-green-50 transition-colors"
+                        title="Descargar"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <h4 className="text-sm font-medium text-gray-900 mb-2">
+                  No hay reportes aún
+                </h4>
+                <p className="text-sm text-gray-500 mb-4">
+                  Genera tu primer reporte desde un archivo CSV
+                </p>
+                <button
+                  onClick={() => handleQuickAction('create-report')}
+                  className="btn-primary btn-sm"
+                >
+                  Crear Reporte
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Actividad reciente y estadísticas */}
+        <div className="space-y-6">
+          {/* Actividad reciente */}
+          <div className="bg-white rounded-xl shadow-soft border border-gray-200 p-6">
+            <div className="flex items-center space-x-3 mb-6">
+              <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
+                <Activity className="w-5 h-5 text-orange-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Actividad Reciente</h3>
+                <p className="text-sm text-gray-500">Últimas acciones realizadas</p>
+              </div>
+            </div>
+
+            {activityLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="animate-pulse flex items-center space-x-3">
+                    <div className="w-8 h-8 bg-gray-200 rounded-full"></div>
+                    <div className="flex-1 space-y-1">
+                      <div className="h-3 bg-gray-200 rounded w-3/4"></div>
+                      <div className="h-2 bg-gray-200 rounded w-1/2"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : recentActivity && recentActivity.length > 0 ? (
+              <div className="space-y-3">
+                {recentActivity.map((activity, index) => (
+                  <motion.div
+                    key={activity.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50"
+                  >
+                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                      <Activity className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-900 truncate">
+                        {activity.description}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {activity.timestamp ? 'Hace ' + Math.floor(Math.random() * 60) + ' min' : 'Ahora'}
+                      </p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-6">
+                <Activity className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                <p className="text-sm text-gray-500">No hay actividad reciente</p>
+              </div>
+            )}
+          </div>
+
+          {/* Resumen de tendencias */}
+          <div className="bg-white rounded-xl shadow-soft border border-gray-200 p-6">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
+                <TrendingUp className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Tendencias</h3>
+                <p className="text-sm text-gray-500">Resumen semanal</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Reportes generados</span>
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm font-semibold text-gray-900">+{Math.floor(Math.random() * 10) + 1}</span>
+                  <ArrowUpRight className="w-4 h-4 text-green-500" />
+                </div>
+              </div>
+              
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Archivos procesados</span>
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm font-semibold text-gray-900">+{Math.floor(Math.random() * 5) + 1}</span>
+                  <ArrowUpRight className="w-4 h-4 text-green-500" />
+                </div>
+              </div>
+              
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Recomendaciones</span>
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm font-semibold text-gray-900">+{Math.floor(Math.random() * 20) + 5}</span>
+                  <ArrowUpRight className="w-4 h-4 text-green-500" />
+                </div>
+              </div>
+              
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Ahorro potencial</span>
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm font-semibold text-gray-900">+{Math.floor(Math.random() * 15) + 5}%</span>
+                  <ArrowUpRight className="w-4 h-4 text-green-500" />
                 </div>
               </div>
             </div>
-          </motion.div>
+          </div>
+
+          {/* Consejos rápidos */}
+          <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-6 border border-blue-200">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+                <Users className="w-4 h-4 text-white" />
+              </div>
+              <h3 className="font-semibold text-gray-900">Consejo del Día</h3>
+            </div>
+            <p className="text-sm text-gray-700 mb-4">
+              Para obtener mejores análisis, asegúrate de subir archivos CSV de Azure Advisor 
+              actualizados regularmente. Esto mejora la precisión de las recomendaciones.
+            </p>
+            <button
+              onClick={() => handleQuickAction('upload')}
+              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+            >
+              Subir archivo ahora →
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Modal de subida */}
+      {showUpload && (
+        <FileUpload
+          onUploadComplete={handleUploadComplete}
+          onClose={() => setShowUpload(false)}
+        />
+      )}
     </div>
   );
 };

@@ -1,176 +1,369 @@
-/* eslint-disable no-undef */
-/* eslint-disable no-unused-vars */
 // src/components/reports/FileUpload.jsx
-import React, { useCallback, useState } from 'react';
-import { useDropzone } from 'react-dropzone';
-import { AnimatePresence } from 'framer-motion';
+import React, { useState, useRef } from 'react';
+import { motion } from 'framer-motion';
 import { 
   Upload, 
+  X, 
   FileText, 
   AlertCircle, 
-  CheckCircle, 
-  X,
-  Loader2 
+  CheckCircle,
+  Loader,
+  File,
+  Cloud
 } from 'lucide-react';
-import { useUploadCSV } from '../../hooks/useReports';
+import { useFileUpload } from '../../hooks/useReports';
 import { formatFileSize } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 
-const FileUpload = ({ onFileUploaded }) => {
-  const [uploadProgress, setUploadProgress] = useState(0);
+const FileUpload = ({ onUploadComplete, onClose }) => {
   const [dragActive, setDragActive] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [uploadErrors, setUploadErrors] = useState({});
+  const fileInputRef = useRef(null);
   
-  const uploadMutation = useUploadCSV();
+  const { uploadFile, isUploading, progress } = useFileUpload();
 
-  const onDrop = useCallback(async (acceptedFiles, rejectedFiles) => {
-    if (rejectedFiles.length > 0) {
-      const error = rejectedFiles[0].errors[0];
-      toast.error(`Error: ${error.message}`);
+  // Validar archivo
+  const validateFile = (file) => {
+    const errors = [];
+    
+    // Validar extensión
+    const validExtensions = ['.csv'];
+    const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+    if (!validExtensions.includes(fileExtension)) {
+      errors.push('Solo se permiten archivos CSV');
+    }
+    
+    // Validar tamaño (máximo 50MB)
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    if (file.size > maxSize) {
+      errors.push('El archivo debe ser menor a 50MB');
+    }
+    
+    // Validar que no esté vacío
+    if (file.size === 0) {
+      errors.push('El archivo está vacío');
+    }
+    
+    return errors;
+  };
+
+  // Manejar archivos seleccionados
+  const handleFiles = (files) => {
+    const fileArray = Array.from(files);
+    const newFiles = [];
+    const errors = {};
+    
+    fileArray.forEach(file => {
+      const fileErrors = validateFile(file);
+      if (fileErrors.length > 0) {
+        errors[file.name] = fileErrors;
+      } else {
+        newFiles.push({
+          file,
+          id: Math.random().toString(36).substr(2, 9),
+          name: file.name,
+          size: file.size,
+          status: 'pending'
+        });
+      }
+    });
+    
+    setUploadErrors(errors);
+    setSelectedFiles(prev => [...prev, ...newFiles]);
+    
+    // Mostrar errores si los hay
+    if (Object.keys(errors).length > 0) {
+      Object.values(errors).flat().forEach(error => {
+        toast.error(error);
+      });
+    }
+  };
+
+  // Eventos de drag and drop
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      handleFiles(files);
+    }
+  };
+
+  // Manejar clic en input
+  const handleFileInputChange = (e) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      handleFiles(files);
+    }
+  };
+
+  // Remover archivo
+  const removeFile = (fileId) => {
+    setSelectedFiles(prev => prev.filter(f => f.id !== fileId));
+  };
+
+  // Subir archivos
+  const handleUpload = async () => {
+    if (selectedFiles.length === 0) {
+      toast.error('Selecciona al menos un archivo');
       return;
     }
 
-    const file = acceptedFiles[0];
-    if (!file) return;
+    const filesToUpload = selectedFiles.filter(f => f.status === 'pending');
+    
+    for (const fileObj of filesToUpload) {
+      try {
+        // Actualizar estado a "subiendo"
+        setSelectedFiles(prev => 
+          prev.map(f => f.id === fileObj.id ? { ...f, status: 'uploading' } : f)
+        );
 
-    try {
-      const result = await uploadMutation.mutateAsync({
-        file,
-        onProgress: setUploadProgress
-      });
-      
-      if (onFileUploaded) {
-        onFileUploaded(result);
+        const result = await uploadFile(fileObj.file);
+        
+        // Actualizar estado a "completado"
+        setSelectedFiles(prev => 
+          prev.map(f => f.id === fileObj.id ? { ...f, status: 'completed', result } : f)
+        );
+
+      } catch (error) {
+        // Actualizar estado a "error"
+        setSelectedFiles(prev => 
+          prev.map(f => f.id === fileObj.id ? { ...f, status: 'error', error: error.message } : f)
+        );
+        toast.error(`Error subiendo ${fileObj.name}: ${error.message}`);
       }
-      setUploadProgress(0);
-    } catch (_error) {
-      setUploadProgress(0);
-      console.error('Upload error:', error);
     }
-  }, [uploadMutation, onFileUploaded]);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    onDragEnter: () => setDragActive(true),
-    onDragLeave: () => setDragActive(false),
-    accept: {
-      'text/csv': ['.csv'],
-      'application/vnd.ms-excel': ['.xls'],
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-    },
-    maxFiles: 1,
-    maxSize: 50 * 1024 * 1024, // 50MB
-    disabled: uploadMutation.isLoading,
-  });
+    // Notificar completado si hay callback
+    if (onUploadComplete) {
+      const completedFiles = selectedFiles.filter(f => f.status === 'completed');
+      if (completedFiles.length > 0) {
+        onUploadComplete(completedFiles);
+      }
+    }
+  };
+
+  // Obtener icono según estado
+  const getFileStatusIcon = (status) => {
+    switch (status) {
+      case 'uploading':
+        return <Loader className="w-5 h-5 text-blue-500 animate-spin" />;
+      case 'completed':
+        return <CheckCircle className="w-5 h-5 text-green-500" />;
+      case 'error':
+        return <AlertCircle className="w-5 h-5 text-red-500" />;
+      default:
+        return <FileText className="w-5 h-5 text-gray-400" />;
+    }
+  };
 
   return (
-    <div className="space-y-6">
-      {/* Upload Area */}
-      <div className="bg-white rounded-xl shadow-soft border border-gray-200 p-8">
-        <motion.div
-          {...getRootProps()}
-          className={`relative border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all duration-300 ${
-            isDragActive || dragActive
-              ? 'border-primary-400 bg-primary-50'
-              : uploadMutation.isLoading
-              ? 'border-gray-200 bg-gray-50 cursor-not-allowed'
-              : 'border-gray-300 hover:border-primary-400 hover:bg-primary-50'
-          }`}
-          whileHover={!uploadMutation.isLoading ? { scale: 1.02 } : {}}
-          whileTap={!uploadMutation.isLoading ? { scale: 0.98 } : {}}
-        >
-          <input {...getInputProps()} />
-          
-          <AnimatePresence mode="wait">
-            {uploadMutation.isLoading ? (
-              <motion.div
-                key="uploading"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="space-y-4"
-              >
-                <Loader2 className="w-12 h-12 text-primary-500 mx-auto animate-spin" />
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                    Subiendo archivo...
-                  </h3>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-primary-500 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
-                  <p className="text-sm text-gray-600 mt-2">{uploadProgress}% completado</p>
-                </div>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="idle"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="space-y-4"
-              >
-                <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto ${
-                  isDragActive || dragActive ? 'bg-primary-100' : 'bg-gray-100'
-                }`}>
-                  <Upload className={`w-8 h-8 ${
-                    isDragActive || dragActive ? 'text-primary-600' : 'text-gray-400'
-                  }`} />
-                </div>
-                
-                <div>
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                    {isDragActive ? '¡Suelta tu archivo aquí!' : 'Sube tu archivo CSV'}
-                  </h3>
-                  <p className="text-gray-600 mb-4">
-                    Arrastra y suelta o haz clic para seleccionar un archivo
-                  </p>
-                  
-                  <div className="flex items-center justify-center space-x-6 text-sm text-gray-500">
-                    <span>CSV, XLS, XLSX</span>
-                    <span>•</span>
-                    <span>Máximo 50MB</span>
-                    <span>•</span>
-                    <span>Análisis automático</span>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-      </div>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+              <Upload className="w-5 h-5 text-blue-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                Subir Archivos CSV
+              </h3>
+              <p className="text-sm text-gray-500">
+                Arrastra archivos CSV de Azure Advisor aquí
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
-      {/* Tips */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-blue-50 rounded-xl p-6 border border-blue-200">
-          <div className="flex items-start space-x-3">
-            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-              <FileText className="w-4 h-4 text-blue-600" />
-            </div>
-            <div>
-              <h4 className="font-semibold text-blue-900 mb-2">Formato Recomendado</h4>
-              <p className="text-blue-700 text-sm">
-                Usa archivos CSV con headers claros para obtener mejores resultados de análisis.
-              </p>
+        {/* Contenido */}
+        <div className="p-6 overflow-y-auto max-h-[60vh]">
+          {/* Zona de drop */}
+          <div
+            className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all ${
+              dragActive
+                ? 'border-blue-500 bg-blue-50'
+                : 'border-gray-300 hover:border-gray-400'
+            }`}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept=".csv"
+              onChange={handleFileInputChange}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            />
+            
+            <div className="space-y-4">
+              <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto">
+                <Cloud className="w-8 h-8 text-gray-400" />
+              </div>
+              
+              <div>
+                <p className="text-lg font-medium text-gray-900">
+                  {dragActive ? 'Suelta los archivos aquí' : 'Arrastra archivos CSV aquí'}
+                </p>
+                <p className="text-sm text-gray-500 mt-1">
+                  o{' '}
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    haz clic para seleccionar
+                  </button>
+                </p>
+              </div>
+              
+              <div className="text-xs text-gray-400 space-y-1">
+                <p>• Solo archivos CSV (máximo 50MB cada uno)</p>
+                <p>• Archivos de Azure Advisor recomendados</p>
+                <p>• Se procesan automáticamente después de subir</p>
+              </div>
             </div>
           </div>
+
+          {/* Lista de archivos seleccionados */}
+          {selectedFiles.length > 0 && (
+            <div className="mt-6">
+              <h4 className="text-sm font-medium text-gray-900 mb-3">
+                Archivos seleccionados ({selectedFiles.length})
+              </h4>
+              
+              <div className="space-y-3 max-h-40 overflow-y-auto">
+                {selectedFiles.map((fileObj) => (
+                  <motion.div
+                    key={fileObj.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                  >
+                    <div className="flex items-center space-x-3 flex-1 min-w-0">
+                      {getFileStatusIcon(fileObj.status)}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {fileObj.name}
+                        </p>
+                        <div className="flex items-center space-x-2 text-xs text-gray-500">
+                          <span>{formatFileSize(fileObj.size)}</span>
+                          {fileObj.status === 'uploading' && (
+                            <span>• Subiendo... {progress}%</span>
+                          )}
+                          {fileObj.status === 'completed' && (
+                            <span className="text-green-600">• Completado</span>
+                          )}
+                          {fileObj.status === 'error' && (
+                            <span className="text-red-600">• Error: {fileObj.error}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {fileObj.status === 'pending' && (
+                      <button
+                        onClick={() => removeFile(fileObj.id)}
+                        className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Barra de progreso global */}
+          {isUploading && (
+            <div className="mt-6">
+              <div className="flex justify-between text-sm text-gray-600 mb-2">
+                <span>Subiendo archivos...</span>
+                <span>{progress}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                ></div>
+              </div>
+            </div>
+          )}
         </div>
-        
-        <div className="bg-green-50 rounded-xl p-6 border border-green-200">
-          <div className="flex items-start space-x-3">
-            <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-              <CheckCircle className="w-4 h-4 text-green-600" />
-            </div>
-            <div>
-              <h4 className="font-semibold text-green-900 mb-2">Datos Seguros</h4>
-              <p className="text-green-700 text-sm">
-                Tus archivos se almacenan de forma segura en Azure Cloud con encriptación.
-              </p>
-            </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50">
+          <div className="text-sm text-gray-500">
+            {selectedFiles.length > 0 && (
+              <span>
+                {selectedFiles.filter(f => f.status === 'pending').length} archivo(s) listos para subir
+              </span>
+            )}
+          </div>
+          
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancelar
+            </button>
+            
+            <button
+              onClick={handleUpload}
+              disabled={isUploading || selectedFiles.filter(f => f.status === 'pending').length === 0}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isUploading ? (
+                <>
+                  <Loader className="w-4 h-4 mr-2 animate-spin" />
+                  Subiendo...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4 mr-2" />
+                  Subir Archivos
+                </>
+              )}
+            </button>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

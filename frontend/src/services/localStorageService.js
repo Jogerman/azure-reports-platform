@@ -1,29 +1,30 @@
-// src/hooks/useReports.js - SISTEMA ACTUALIZADO CON ALMACENAMIENTO REAL
-import { useState, useEffect } from 'react';
-import toast from 'react-hot-toast';
-
-// Sistema de almacenamiento local mejorado
-class LocalStorageService {
+// src/services/localStorageService.js - Sistema de almacenamiento local mejorado
+export class LocalStorageService {
   constructor() {
     this.prefix = 'azure_reports_';
     this.maxFiles = 50;
     this.maxFileSize = 50 * 1024 * 1024; // 50MB
   }
 
-  // Guardar archivo con procesamiento básico
+  // Guardar archivo en localStorage con procesamiento básico
   async saveFile(file) {
     try {
+      // Validaciones
       if (file.size > this.maxFileSize) {
-        throw new Error('Archivo demasiado grande (máximo 50MB)');
+        throw new Error('Archivo demasiado grande');
       }
 
       if (!file.name.toLowerCase().endsWith('.csv')) {
         throw new Error('Solo se permiten archivos CSV');
       }
 
+      // Leer contenido del archivo
       const content = await this.readFileContent(file);
+      
+      // Procesar CSV
       const processedData = await this.processCSVContent(content);
 
+      // Crear objeto de archivo
       const fileData = {
         id: this.generateId(),
         original_filename: file.name,
@@ -37,7 +38,10 @@ class LocalStorageService {
         preview: processedData.preview
       };
 
+      // Guardar en localStorage
       this.saveToStorage('file_' + fileData.id, fileData);
+      
+      // Actualizar lista de archivos
       this.addToFilesList(fileData.id);
 
       return fileData;
@@ -47,15 +51,17 @@ class LocalStorageService {
     }
   }
 
+  // Leer contenido del archivo
   readFileContent(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = () => reject(new Error('Error leyendo archivo'));
+      reader.onerror = (e) => reject(new Error('Error leyendo archivo'));
       reader.readAsText(file);
     });
   }
 
+  // Procesar contenido CSV básico
   async processCSVContent(content) {
     try {
       const lines = content.split('\n').filter(line => line.trim());
@@ -63,9 +69,11 @@ class LocalStorageService {
         throw new Error('Archivo CSV vacío');
       }
 
+      // Obtener headers
       const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
       const dataLines = lines.slice(1);
 
+      // Procesar datos
       const data = dataLines.map(line => {
         const values = this.parseCSVLine(line);
         const row = {};
@@ -75,20 +83,23 @@ class LocalStorageService {
         return row;
       });
 
+      // Análisis básico para Azure Advisor
       const analysis = this.analyzeAzureAdvisorData(data, headers);
 
       return {
         rowCount: dataLines.length,
         columns: headers,
-        data: data.slice(0, 100),
-        preview: data.slice(0, 10),
+        data: data.slice(0, 100), // Solo primeras 100 filas para preview
+        preview: data.slice(0, 10), // Primeras 10 filas para vista rápida
         analysis
       };
     } catch (error) {
-      throw new Error('Error procesando CSV: ' + error.message);
+      console.error('Error processing CSV:', error);
+      throw new Error('Error procesando archivo CSV: ' + error.message);
     }
   }
 
+  // Parsear línea CSV (manejo básico de comillas)
   parseCSVLine(line) {
     const result = [];
     let current = '';
@@ -96,6 +107,7 @@ class LocalStorageService {
     
     for (let i = 0; i < line.length; i++) {
       const char = line[i];
+      
       if (char === '"') {
         inQuotes = !inQuotes;
       } else if (char === ',' && !inQuotes) {
@@ -110,6 +122,7 @@ class LocalStorageService {
     return result.map(val => val.replace(/"/g, ''));
   }
 
+  // Análizar datos específicos de Azure Advisor
   analyzeAzureAdvisorData(data, headers) {
     const analysis = {
       total_recommendations: data.length,
@@ -122,15 +135,19 @@ class LocalStorageService {
       reliability_issues: 0
     };
 
+    // Detectar columnas relevantes
     const categoryCol = this.findColumn(headers, ['category', 'categoria']);
     const impactCol = this.findColumn(headers, ['impact', 'business impact', 'impacto']);
     const resourceCol = this.findColumn(headers, ['resource type', 'tipo recurso', 'resource']);
+    const recommendationCol = this.findColumn(headers, ['recommendation', 'recomendacion']);
 
     data.forEach(row => {
+      // Analizar categorías
       if (categoryCol && row[categoryCol]) {
         const category = row[categoryCol].toLowerCase();
         analysis.categories[category] = (analysis.categories[category] || 0) + 1;
         
+        // Contar por tipo
         if (category.includes('security') || category.includes('seguridad')) {
           analysis.security_issues++;
         }
@@ -142,26 +159,31 @@ class LocalStorageService {
         }
       }
 
+      // Analizar impacto
       if (impactCol && row[impactCol]) {
         const impact = row[impactCol].toLowerCase();
         analysis.impact_levels[impact] = (analysis.impact_levels[impact] || 0) + 1;
       }
 
+      // Analizar tipos de recursos
       if (resourceCol && row[resourceCol]) {
         const resource = row[resourceCol];
         analysis.resource_types[resource] = (analysis.resource_types[resource] || 0) + 1;
       }
 
-      // Estimar ahorros basado en contenido
-      const rowText = Object.values(row).join(' ').toLowerCase();
-      if (rowText.includes('cost') || rowText.includes('save') || rowText.includes('optimize')) {
-        analysis.estimated_savings += Math.random() * 500 + 100;
+      // Estimar ahorros (simulado)
+      if (recommendationCol && row[recommendationCol]) {
+        const rec = row[recommendationCol].toLowerCase();
+        if (rec.includes('cost') || rec.includes('save') || rec.includes('optimize')) {
+          analysis.estimated_savings += Math.random() * 1000; // Simulado
+        }
       }
     });
 
     return analysis;
   }
 
+  // Encontrar columna por nombres posibles
   findColumn(headers, possibleNames) {
     return headers.find(header => 
       possibleNames.some(name => 
@@ -170,10 +192,12 @@ class LocalStorageService {
     );
   }
 
+  // Generar ID único
   generateId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2);
   }
 
+  // Guardar en localStorage
   saveToStorage(key, data) {
     try {
       localStorage.setItem(this.prefix + key, JSON.stringify(data));
@@ -187,6 +211,7 @@ class LocalStorageService {
     }
   }
 
+  // Obtener de localStorage
   getFromStorage(key) {
     try {
       const data = localStorage.getItem(this.prefix + key);
@@ -197,10 +222,12 @@ class LocalStorageService {
     }
   }
 
+  // Agregar a lista de archivos
   addToFilesList(fileId) {
     const filesList = this.getFromStorage('files_list') || [];
-    filesList.unshift(fileId);
+    filesList.unshift(fileId); // Agregar al inicio
     
+    // Mantener solo los últimos archivos
     if (filesList.length > this.maxFiles) {
       const removedIds = filesList.splice(this.maxFiles);
       removedIds.forEach(id => this.deleteFile(id));
@@ -209,15 +236,18 @@ class LocalStorageService {
     this.saveToStorage('files_list', filesList);
   }
 
+  // Obtener todos los archivos
   getAllFiles() {
     const filesList = this.getFromStorage('files_list') || [];
     return filesList.map(id => this.getFromStorage('file_' + id)).filter(Boolean);
   }
 
+  // Obtener archivo específico
   getFile(fileId) {
     return this.getFromStorage('file_' + fileId);
   }
 
+  // Eliminar archivo
   deleteFile(fileId) {
     localStorage.removeItem(this.prefix + 'file_' + fileId);
     const filesList = this.getFromStorage('files_list') || [];
@@ -225,6 +255,7 @@ class LocalStorageService {
     this.saveToStorage('files_list', updatedList);
   }
 
+  // Limpiar archivos antiguos
   cleanOldFiles() {
     const filesList = this.getFromStorage('files_list') || [];
     const filesToKeep = filesList.slice(0, Math.floor(this.maxFiles / 2));
@@ -237,7 +268,7 @@ class LocalStorageService {
     this.saveToStorage('files_list', filesToKeep);
   }
 
-  // Generar reporte real
+  // Generar reporte basado en archivo
   async generateReport(fileId, reportConfig) {
     const file = this.getFile(fileId);
     if (!file) {
@@ -254,18 +285,20 @@ class LocalStorageService {
       source_filename: file.original_filename,
       created_at: new Date().toISOString(),
       status: 'completed',
-      generation_time_seconds: Math.floor(Math.random() * 60) + 30,
+      generation_time_seconds: Math.floor(Math.random() * 60) + 30, // 30-90 segundos simulado
       user_name: 'Usuario',
       analysis_summary: this.generateAnalysisSummary(file.analysis_data, reportConfig),
       config: reportConfig
     };
 
+    // Guardar reporte
     this.saveToStorage('report_' + reportId, report);
     this.addToReportsList(reportId);
 
     return report;
   }
 
+  // Generar resumen de análisis
   generateAnalysisSummary(analysisData, config) {
     if (!analysisData) return null;
 
@@ -282,10 +315,12 @@ class LocalStorageService {
     };
   }
 
+  // Gestión de reportes
   addToReportsList(reportId) {
     const reportsList = this.getFromStorage('reports_list') || [];
     reportsList.unshift(reportId);
     
+    // Mantener solo los últimos 100 reportes
     if (reportsList.length > 100) {
       const removedIds = reportsList.splice(100);
       removedIds.forEach(id => {
@@ -312,6 +347,7 @@ class LocalStorageService {
     this.saveToStorage('reports_list', updatedList);
   }
 
+  // Obtener estadísticas del dashboard
   getDashboardStats() {
     const files = this.getAllFiles();
     const reports = this.getAllReports();
@@ -334,8 +370,9 @@ class LocalStorageService {
     };
   }
 
+  // Simular descarga de archivo/reporte
   downloadFile(fileId, filename) {
-    const content = "Este sería el contenido real del archivo o reporte descargado.\nContenido simulado para demostración.";
+    const content = "Contenido simulado del archivo descargado\nEsto sería el contenido real del archivo CSV o PDF del reporte";
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     
@@ -350,10 +387,14 @@ class LocalStorageService {
   }
 }
 
-// Instancia global del servicio
-const localStorageService = new LocalStorageService();
+// Crear instancia global
+export const localStorageService = new LocalStorageService();
 
-// HOOKS ACTUALIZADOS QUE USAN EL SISTEMA REAL
+// Hook mejorado que usa el sistema de almacenamiento local
+// src/hooks/useLocalReports.js
+import { useState, useEffect } from 'react';
+import { localStorageService } from '../services/localStorageService';
+import toast from 'react-hot-toast';
 
 export const useFileUpload = () => {
   const [isUploading, setIsUploading] = useState(false);
@@ -364,7 +405,7 @@ export const useFileUpload = () => {
     setProgress(0);
     
     try {
-      // Simular progreso realista
+      // Simular progreso de subida
       const progressInterval = setInterval(() => {
         setProgress(prev => {
           const newProgress = prev + Math.random() * 15;
@@ -372,18 +413,17 @@ export const useFileUpload = () => {
         });
       }, 200);
 
-      // Procesar archivo REALMENTE
+      // Procesar archivo
       const result = await localStorageService.saveFile(file);
       
       clearInterval(progressInterval);
       setProgress(100);
       
-      toast.success(`✅ Archivo procesado: ${result.rows_count} filas analizadas`);
-      toast.success(`📊 ${result.analysis_data.total_recommendations} recomendaciones encontradas`);
+      toast.success(`Archivo procesado: ${result.rows_count} filas analizadas`);
       
       return result;
     } catch (error) {
-      toast.error('❌ ' + error.message);
+      toast.error('Error: ' + error.message);
       throw error;
     } finally {
       setIsUploading(false);
@@ -428,10 +468,11 @@ export const useStorageFiles = (options = {}) => {
 
   useEffect(() => {
     setIsLoading(true);
+    // Simular carga
     setTimeout(() => {
       refetch();
       setIsLoading(false);
-    }, 300);
+    }, 500);
   }, [options.search, options.type]);
 
   return { data, isLoading, error, refetch };
@@ -502,6 +543,7 @@ export const useDashboardStats = () => {
       } catch (error) {
         console.error('Error fetching dashboard stats:', error);
         setError(error);
+        // Usar datos demo como fallback
         setData({
           totalReports: 0,
           totalFiles: 0,
@@ -553,7 +595,7 @@ export const useRecentActivity = (limit = 5) => {
         const files = localStorageService.getAllFiles().slice(0, limit);
         const activities = files.map(file => ({
           id: file.id,
-          description: `Archivo ${file.original_filename} procesado: ${file.rows_count} filas`,
+          description: `Archivo ${file.original_filename} procesado exitosamente`,
           timestamp: file.upload_date,
           type: 'file_processed'
         }));
@@ -575,7 +617,7 @@ export const useRecentActivity = (limit = 5) => {
   return { data, isLoading };
 };
 
-// Hook para generar reportes REALES
+// Hook para generar reportes
 export const useReportGeneration = () => {
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -583,19 +625,15 @@ export const useReportGeneration = () => {
     setIsGenerating(true);
     
     try {
-      toast.loading('Generando reporte...', { id: 'generating' });
-      
-      // Simular tiempo de generación realista
-      await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000));
+      // Simular tiempo de generación
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       const report = await localStorageService.generateReport(fileId, reportConfig);
       
-      toast.success(`🎉 Reporte "${report.title}" generado exitosamente`, { id: 'generating' });
-      toast.success(`📈 ${report.analysis_summary?.total_recommendations || 0} recomendaciones incluidas`);
-      
+      toast.success(`Reporte "${report.title}" generado exitosamente`);
       return report;
     } catch (error) {
-      toast.error('❌ Error generando reporte: ' + error.message, { id: 'generating' });
+      toast.error('Error generando reporte: ' + error.message);
       throw error;
     } finally {
       setIsGenerating(false);
@@ -604,95 +642,3 @@ export const useReportGeneration = () => {
 
   return { generateReport, isGenerating };
 };
-
-// Hook para descargas REALES
-export const useDownload = () => {
-  const downloadFile = (fileId, filename) => {
-    try {
-      localStorageService.downloadFile(fileId, filename);
-      toast.success('📥 Descarga iniciada');
-    } catch (error) {
-      toast.error('❌ Error en descarga: ' + error.message);
-    }
-  };
-
-  const downloadReport = (reportId, reportTitle) => {
-    try {
-      const report = localStorageService.getReport(reportId);
-      if (!report) {
-        throw new Error('Reporte no encontrado');
-      }
-      
-      // Simular contenido del reporte
-      const reportContent = `
-REPORTE: ${report.title}
-===============================
-
-Generado el: ${new Date(report.created_at).toLocaleString()}
-Archivo fuente: ${report.source_filename}
-Tipo de análisis: ${report.report_type}
-
-RESUMEN EJECUTIVO
------------------
-Total de recomendaciones: ${report.analysis_summary?.total_recommendations || 0}
-Problemas de seguridad: ${report.analysis_summary?.security_issues_found || 0}
-Ahorros estimados: ${report.analysis_summary?.estimated_monthly_savings || 0}/mes
-
-CONFIGURACIÓN
--------------
-Incluye gráficos: ${report.config?.includeCharts ? 'Sí' : 'No'}
-Incluye tablas: ${report.config?.includeTables ? 'Sí' : 'No'}
-Incluye recomendaciones: ${report.config?.includeRecommendations ? 'Sí' : 'No'}
-
-[Este sería el contenido completo del reporte con análisis detallado]
-      `;
-      
-      const blob = new Blob([reportContent], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${reportTitle || 'reporte'}.txt`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      URL.revokeObjectURL(url);
-      toast.success('📥 Reporte descargado');
-    } catch (error) {
-      toast.error('❌ Error descargando reporte: ' + error.message);
-    }
-  };
-
-  return { downloadFile, downloadReport };
-};
-
-// Hook para eliminar archivos/reportes
-export const useDelete = () => {
-  const deleteFile = (fileId, filename) => {
-    try {
-      localStorageService.deleteFile(fileId);
-      toast.success(`🗑️ Archivo "${filename}" eliminado`);
-      return true;
-    } catch (error) {
-      toast.error('❌ Error eliminando archivo: ' + error.message);
-      return false;
-    }
-  };
-
-  const deleteReport = (reportId, reportTitle) => {
-    try {
-      localStorageService.deleteReport(reportId);
-      toast.success(`🗑️ Reporte "${reportTitle}" eliminado`);
-      return true;
-    } catch (error) {
-      toast.error('❌ Error eliminando reporte: ' + error.message);
-      return false;
-    }
-  };
-
-  return { deleteFile, deleteReport };
-};
-
-// Exportar servicio para uso directo si es necesario
-export { localStorageService };

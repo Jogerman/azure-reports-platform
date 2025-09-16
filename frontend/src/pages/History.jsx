@@ -4,14 +4,12 @@ import { motion } from 'framer-motion';
 import { 
   History as HistoryIcon, 
   Search, 
-  Filter,
-  Calendar,
-  Download,
-  Trash2,
-  Eye,
   RefreshCw,
   FileText,
-  BarChart3
+  BarChart3,
+  Download,
+  Trash2,
+  Eye
 } from 'lucide-react';
 import { useReports } from '../hooks/useReports';
 import ReportsList from '../components/reports/ReportsList';
@@ -290,7 +288,7 @@ const History = () => {
               <span className="text-sm text-gray-600">Tasa de éxito</span>
               <span className="text-sm font-semibold text-green-600">
                 {reports && reports.length > 0 
-                  ? Math.round((stats[1].value / stats[0].value) * 100) 
+                  ? Math.round((parseInt(stats[1].value) / parseInt(stats[0].value)) * 100) 
                   : 0}%
               </span>
             </div>

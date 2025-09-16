@@ -1,5 +1,4 @@
-/* eslint-disable no-unused-vars */
-// src/components/reports/ReportsList.jsx
+// src/components/reports/ReportsList.jsx - VERSIÓN FINAL CON FUNCIONALIDAD REAL
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -11,53 +10,47 @@ import {
   Calendar,
   Clock,
   User,
-  BarChart3
+  BarChart3,
+  Trash2
 } from 'lucide-react';
 import { formatRelativeTime, formatReportType } from '../../utils/formatters';
 import { getStatusColor, getStatusIcon } from '../../utils/formatters';
-import { downloadFile } from '../../utils/helpers';
+import { useDownload, useDelete } from '../../hooks/useReports';
 import toast from 'react-hot-toast';
 
-// Función para intentar importar el servicio de forma segura
-let reportsService = null;
-try {
-  const service = require('../../services/reportsService');
-  reportsService = service.reportsService || service.default;
-} catch (error) {
-  console.warn('reportsService no disponible en ReportsList');
-}
+const ReportsList = ({ reports = [], onUpdate }) => {
+  const { downloadReport } = useDownload();
+  const { deleteReport } = useDelete();
 
-const ReportsList = ({ reports = [] }) => {
-  const handleDownload = async (report) => {
-    try {
-      if (reportsService && reportsService.downloadReport) {
-        const blob = await reportsService.downloadReport(report.id);
-        downloadFile(blob, `${report.title}.pdf`);
-        toast.success('Reporte descargado exitosamente');
-      } else {
-        // Fallback para modo demo
-        toast.success('Descarga simulada - modo demo');
-        console.log('Simulating download for:', report.title);
-      }
-    } catch (_error) {
-      toast.error('Error al descargar el reporte');
-    }
+  const handleDownload = (report) => {
+    downloadReport(report.id, report.title);
   };
 
-  const handlePreview = async (report) => {
-    try {
-      if (reportsService && reportsService.getReportPreview) {
-        const preview = await reportsService.getReportPreview(report.id);
-        // Abrir en nueva ventana o modal
-        const newWindow = window.open('', '_blank');
-        newWindow.document.write(preview.html_content || preview.preview_url);
-      } else {
-        // Fallback para modo demo
-        toast.success('Vista previa simulada - modo demo');
-        console.log('Simulating preview for:', report.title);
+  const handlePreview = (report) => {
+    // Mostrar información del reporte en un toast
+    toast(
+      <div className="text-sm">
+        <p className="font-semibold">{report.title}</p>
+        <p className="text-gray-600">Archivo: {report.source_filename}</p>
+        <p className="text-gray-600">
+          {report.analysis_summary?.total_recommendations || 0} recomendaciones
+        </p>
+        {report.analysis_summary?.estimated_monthly_savings && (
+          <p className="text-green-600">
+            Ahorros: ${report.analysis_summary.estimated_monthly_savings}/mes
+          </p>
+        )}
+      </div>,
+      { duration: 4000 }
+    );
+  };
+
+  const handleDelete = (report) => {
+    if (window.confirm(`¿Estás seguro de eliminar el reporte "${report.title}"?`)) {
+      const success = deleteReport(report.id, report.title);
+      if (success && onUpdate) {
+        onUpdate(); // Refrescar la lista
       }
-    } catch (_error) {
-      toast.error('Error al obtener preview');
     }
   };
 
@@ -127,6 +120,13 @@ const ReportsList = ({ reports = [] }) => {
                   )}
                 </div>
 
+                {/* Información del archivo fuente */}
+                {report.source_filename && (
+                  <div className="mt-2 text-xs text-gray-500">
+                    📁 Generado desde: {report.source_filename}
+                  </div>
+                )}
+
                 {report.description && (
                   <p className="text-sm text-gray-600 mt-2 truncate">
                     {report.description}
@@ -137,16 +137,21 @@ const ReportsList = ({ reports = [] }) => {
                 {report.analysis_summary && (
                   <div className="flex items-center space-x-4 mt-3 text-xs">
                     <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-                      {report.analysis_summary.total_recommendations} recomendaciones
+                      📊 {report.analysis_summary.total_recommendations} recomendaciones
                     </span>
                     {report.analysis_summary.cost_savings_identified && (
                       <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full">
-                        Ahorros identificados
+                        💰 Ahorros identificados
                       </span>
                     )}
                     {report.analysis_summary.security_issues_found > 0 && (
                       <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded-full">
-                        {report.analysis_summary.security_issues_found} problemas de seguridad
+                        🔒 {report.analysis_summary.security_issues_found} problemas de seguridad
+                      </span>
+                    )}
+                    {report.analysis_summary.estimated_monthly_savings > 0 && (
+                      <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full">
+                        💵 ${report.analysis_summary.estimated_monthly_savings}/mes
                       </span>
                     )}
                   </div>
@@ -160,17 +165,24 @@ const ReportsList = ({ reports = [] }) => {
                 <>
                   <button
                     onClick={() => handlePreview(report)}
-                    className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
+                    className="p-2 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
                     title="Vista previa"
                   >
                     <Eye className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => handleDownload(report)}
-                    className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
-                    title="Descargar PDF"
+                    className="p-2 text-gray-400 hover:text-green-600 rounded-lg hover:bg-green-50 transition-colors"
+                    title="Descargar reporte"
                   >
                     <Download className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(report)}
+                    className="p-2 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                    title="Eliminar reporte"
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </>
               )}

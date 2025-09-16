@@ -1,7 +1,20 @@
-// src/config/api.js - Configuración centralizada de API
+// src/config/api.js - VERSIÓN CORREGIDA SIN PROCESS
 export const API_CONFIG = {
-  // URL base del backend - ajusta según tu entorno
-  BASE_URL: process.env.REACT_APP_API_URL || 'http://localhost:8000/api',
+  // URL base del backend - usando window.location como fallback
+  BASE_URL: (() => {
+    // Intentar obtener de variables de entorno React
+    if (typeof window !== 'undefined' && window.ENV && window.ENV.REACT_APP_API_URL) {
+      return window.ENV.REACT_APP_API_URL;
+    }
+    
+    // Fallback para desarrollo local
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      return 'http://localhost:8000/api';
+    }
+    
+    // Fallback para producción
+    return '/api';
+  })(),
   
   // Timeouts
   TIMEOUT: 30000, // 30 segundos
@@ -148,10 +161,14 @@ export const fetchWithRetry = async (url, options = {}, retryCount = 0) => {
   }
 };
 
+// Detectar entorno
+const isProduction = typeof window !== 'undefined' && window.location.hostname !== 'localhost';
+const isDevelopment = !isProduction;
+
 // Configuración específica para desarrollo
 export const DEV_CONFIG = {
   // Mock responses para desarrollo sin backend
-  USE_MOCK: process.env.NODE_ENV === 'development' && !process.env.REACT_APP_API_URL,
+  USE_MOCK: isDevelopment && API_CONFIG.BASE_URL.includes('localhost'),
   
   // Delays simulados para desarrollo
   MOCK_DELAYS: {

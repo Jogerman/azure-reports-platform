@@ -3,8 +3,11 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 
-// API Base URL - ajusta según tu configuración
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
+// Import configuración de API
+import { API_CONFIG } from '../config/api';
+
+// API Base URL - usando configuración centralizada
+const API_BASE_URL = API_CONFIG.BASE_URL;
 
 // Helper para obtener token de autenticación
 const getAuthToken = () => {

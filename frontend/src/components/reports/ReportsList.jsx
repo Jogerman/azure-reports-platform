@@ -15,7 +15,7 @@ import {
 import { formatRelativeTime, formatReportType } from '../../utils/formatters';
 import { getStatusColor, getStatusIcon } from '../../utils/formatters';
 import { downloadFile } from '../../utils/helpers';
-import { reportService } from '../../services/reportService';
+import { reportService } from '../../services/reportsService';
 import toast from 'react-hot-toast';
 
 const ReportsList = ({ reports = [] }) => {

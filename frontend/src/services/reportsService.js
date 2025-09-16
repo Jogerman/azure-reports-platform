@@ -66,5 +66,32 @@ export const reportsService = {
       console.error('Error obteniendo reportes:', error);
       throw error;
     }
+  },
+
+  // Descargar reporte (agregado para ReportsList)
+  downloadReport: async (reportId) => {
+    try {
+      const response = await api.get(`/reports/reports/${reportId}/download/`, {
+        responseType: 'blob'
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error descargando reporte:', error);
+      throw error;
+    }
+  },
+
+  // Obtener preview de reporte (agregado para ReportsList)
+  getReportPreview: async (reportId) => {
+    try {
+      const response = await api.get(`/reports/reports/${reportId}/preview/`);
+      return response.data;
+    } catch (error) {
+      console.error('Error obteniendo preview:', error);
+      throw error;
+    }
   }
 };
+
+// Exportación por defecto también para compatibilidad
+export default reportsService;

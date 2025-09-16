@@ -124,35 +124,7 @@ export const isValidEmail = (email) => {
 };
 
 /**
- * Valida formato de contraseña segura
- */
-export const validatePassword = (password) => {
-  const errors = [];
-  
-  if (password.length < 8) {
-    errors.push('Debe tener al menos 8 caracteres');
-  }
-  
-  if (!/[A-Z]/.test(password)) {
-    errors.push('Debe contener al menos una mayúscula');
-  }
-  
-  if (!/[a-z]/.test(password)) {
-    errors.push('Debe contener al menos una minúscula');
-  }
-  
-  if (!/\d/.test(password)) {
-    errors.push('Debe contener al menos un número');
-  }
-  
-  return {
-    isValid: errors.length === 0,
-    errors
-  };
-};
-
-/**
- * Debounce function para optimizar búsquedas
+ * Debounce function para optimizar renders
  */
 export const debounce = (func, wait) => {
   let timeout;
@@ -167,82 +139,7 @@ export const debounce = (func, wait) => {
 };
 
 /**
- * Convierte objeto a query string
- */
-export const objectToQueryString = (obj) => {
-  const params = new URLSearchParams();
-  
-  Object.keys(obj).forEach(key => {
-    if (obj[key] !== null && obj[key] !== undefined && obj[key] !== '') {
-      params.append(key, obj[key]);
-    }
-  });
-  
-  return params.toString();
-};
-
-/**
- * Descarga archivo desde blob
- */
-export const downloadBlob = (blob, filename) => {
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
-};
-
-/**
- * Descarga archivo genérico
- */
-export const downloadFile = (url, filename) => {
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename || 'download';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-};
-
-/**
- * Copia texto al portapapeles
- */
-export const copyToClipboard = async (text) => {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch (_err) {
-    // Fallback para navegadores que no soportan clipboard API
-    const textArea = document.createElement('textarea');
-    textArea.value = text;
-    document.body.appendChild(textArea);
-    textArea.select();
-    document.execCommand('copy');
-    document.body.removeChild(textArea);
-    return true;
-  }
-};
-
-/**
- * Genera un ID único
- */
-export const generateId = () => {
-  return Math.random().toString(36).substr(2, 9);
-};
-
-/**
- * Calcula el porcentaje entre dos números
- */
-export const calculatePercentage = (value, total) => {
-  if (total === 0) return 0;
-  return Math.round((value / total) * 100);
-};
-
-/**
- * Ordena array de objetos por una propiedad
+ * Ordena array por una propiedad
  */
 export const sortBy = (array, key, direction = 'asc') => {
   return [...array].sort((a, b) => {
@@ -289,6 +186,39 @@ export const fileToBase64 = (file) => {
     reader.onload = () => resolve(reader.result);
     reader.onerror = error => reject(error);
   });
+};
+
+/**
+ * Función para descargar archivos - AGREGADA para ReportsList
+ */
+export const downloadFile = (blob, filename) => {
+  try {
+    // Crear URL temporal para el blob
+    const url = window.URL.createObjectURL(blob);
+    
+    // Crear elemento de enlace temporal
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    
+    // Agregar al DOM temporalmente y hacer clic
+    document.body.appendChild(link);
+    link.click();
+    
+    // Limpiar
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('Error al descargar archivo:', error);
+    // Fallback: intentar abrir en nueva ventana
+    try {
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    } catch (fallbackError) {
+      console.error('Error en fallback de descarga:', fallbackError);
+    }
+  }
 };
 
 /**

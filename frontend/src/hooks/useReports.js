@@ -1,370 +1,232 @@
-// src/hooks/useReports.js - SISTEMA ACTUALIZADO CON ALMACENAMIENTO REAL
+// src/hooks/useReports.js - VERSIÓN CORREGIDA CON BACKEND REAL
 import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 
-// Sistema de almacenamiento local mejorado
-class LocalStorageService {
-  constructor() {
-    this.prefix = 'azure_reports_';
-    this.maxFiles = 50;
-    this.maxFileSize = 50 * 1024 * 1024; // 50MB
-  }
+// API Base URL - ajusta según tu configuración
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 
-  // Guardar archivo con procesamiento básico
-  async saveFile(file) {
-    try {
-      if (file.size > this.maxFileSize) {
-        throw new Error('Archivo demasiado grande (máximo 50MB)');
-      }
+// Helper para obtener token de autenticación
+const getAuthToken = () => {
+  return localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
+};
 
-      if (!file.name.toLowerCase().endsWith('.csv')) {
-        throw new Error('Solo se permiten archivos CSV');
-      }
+// Helper para headers con autenticación
+const getAuthHeaders = () => {
+  const token = getAuthToken();
+  return {
+    'Authorization': token ? `Bearer ${token}` : '',
+    'Content-Type': 'application/json',
+  };
+};
 
-      const content = await this.readFileContent(file);
-      const processedData = await this.processCSVContent(content);
+// Servicio API para archivos
+const fileService = {
+  // Subir archivo CSV
+  async uploadFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('file_type', 'csv');
+    formData.append('source', 'azure_advisor');
 
-      const fileData = {
-        id: this.generateId(),
-        original_filename: file.name,
-        file_size: file.size,
-        upload_date: new Date().toISOString(),
-        processing_status: 'completed',
-        content: content,
-        rows_count: processedData.rowCount,
-        columns: processedData.columns,
-        analysis_data: processedData.analysis,
-        preview: processedData.preview
-      };
-
-      this.saveToStorage('file_' + fileData.id, fileData);
-      this.addToFilesList(fileData.id);
-
-      return fileData;
-    } catch (error) {
-      console.error('Error saving file:', error);
-      throw error;
-    }
-  }
-
-  readFileContent(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = () => reject(new Error('Error leyendo archivo'));
-      reader.readAsText(file);
-    });
-  }
-
-  async processCSVContent(content) {
-    try {
-      const lines = content.split('\n').filter(line => line.trim());
-      if (lines.length === 0) {
-        throw new Error('Archivo CSV vacío');
-      }
-
-      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-      const dataLines = lines.slice(1);
-
-      const data = dataLines.map(line => {
-        const values = this.parseCSVLine(line);
-        const row = {};
-        headers.forEach((header, index) => {
-          row[header] = values[index] || '';
-        });
-        return row;
-      });
-
-      const analysis = this.analyzeAzureAdvisorData(data, headers);
-
-      return {
-        rowCount: dataLines.length,
-        columns: headers,
-        data: data.slice(0, 100),
-        preview: data.slice(0, 10),
-        analysis
-      };
-    } catch (error) {
-      throw new Error('Error procesando CSV: ' + error.message);
-    }
-  }
-
-  parseCSVLine(line) {
-    const result = [];
-    let current = '';
-    let inQuotes = false;
-    
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === ',' && !inQuotes) {
-        result.push(current.trim());
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-    
-    result.push(current.trim());
-    return result.map(val => val.replace(/"/g, ''));
-  }
-
-  analyzeAzureAdvisorData(data, headers) {
-    const analysis = {
-      total_recommendations: data.length,
-      categories: {},
-      impact_levels: {},
-      resource_types: {},
-      estimated_savings: 0,
-      security_issues: 0,
-      performance_issues: 0,
-      reliability_issues: 0
-    };
-
-    const categoryCol = this.findColumn(headers, ['category', 'categoria']);
-    const impactCol = this.findColumn(headers, ['impact', 'business impact', 'impacto']);
-    const resourceCol = this.findColumn(headers, ['resource type', 'tipo recurso', 'resource']);
-
-    data.forEach(row => {
-      if (categoryCol && row[categoryCol]) {
-        const category = row[categoryCol].toLowerCase();
-        analysis.categories[category] = (analysis.categories[category] || 0) + 1;
-        
-        if (category.includes('security') || category.includes('seguridad')) {
-          analysis.security_issues++;
-        }
-        if (category.includes('performance') || category.includes('rendimiento')) {
-          analysis.performance_issues++;
-        }
-        if (category.includes('reliability') || category.includes('confiabilidad')) {
-          analysis.reliability_issues++;
-        }
-      }
-
-      if (impactCol && row[impactCol]) {
-        const impact = row[impactCol].toLowerCase();
-        analysis.impact_levels[impact] = (analysis.impact_levels[impact] || 0) + 1;
-      }
-
-      if (resourceCol && row[resourceCol]) {
-        const resource = row[resourceCol];
-        analysis.resource_types[resource] = (analysis.resource_types[resource] || 0) + 1;
-      }
-
-      // Estimar ahorros basado en contenido
-      const rowText = Object.values(row).join(' ').toLowerCase();
-      if (rowText.includes('cost') || rowText.includes('save') || rowText.includes('optimize')) {
-        analysis.estimated_savings += Math.random() * 500 + 100;
-      }
+    const response = await fetch(`${API_BASE_URL}/files/upload/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${getAuthToken()}`,
+        // No incluir Content-Type para FormData
+      },
+      body: formData,
     });
 
-    return analysis;
-  }
-
-  findColumn(headers, possibleNames) {
-    return headers.find(header => 
-      possibleNames.some(name => 
-        header.toLowerCase().includes(name.toLowerCase())
-      )
-    );
-  }
-
-  generateId() {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2);
-  }
-
-  saveToStorage(key, data) {
-    try {
-      localStorage.setItem(this.prefix + key, JSON.stringify(data));
-    } catch (error) {
-      if (error.name === 'QuotaExceededError') {
-        this.cleanOldFiles();
-        localStorage.setItem(this.prefix + key, JSON.stringify(data));
-      } else {
-        throw error;
-      }
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Error subiendo archivo');
     }
-  }
 
-  getFromStorage(key) {
-    try {
-      const data = localStorage.getItem(this.prefix + key);
-      return data ? JSON.parse(data) : null;
-    } catch (error) {
-      console.error('Error getting from storage:', error);
-      return null;
-    }
-  }
+    return response.json();
+  },
 
-  addToFilesList(fileId) {
-    const filesList = this.getFromStorage('files_list') || [];
-    filesList.unshift(fileId);
-    
-    if (filesList.length > this.maxFiles) {
-      const removedIds = filesList.splice(this.maxFiles);
-      removedIds.forEach(id => this.deleteFile(id));
-    }
-    
-    this.saveToStorage('files_list', filesList);
-  }
-
-  getAllFiles() {
-    const filesList = this.getFromStorage('files_list') || [];
-    return filesList.map(id => this.getFromStorage('file_' + id)).filter(Boolean);
-  }
-
-  getFile(fileId) {
-    return this.getFromStorage('file_' + fileId);
-  }
-
-  deleteFile(fileId) {
-    localStorage.removeItem(this.prefix + 'file_' + fileId);
-    const filesList = this.getFromStorage('files_list') || [];
-    const updatedList = filesList.filter(id => id !== fileId);
-    this.saveToStorage('files_list', updatedList);
-  }
-
-  cleanOldFiles() {
-    const filesList = this.getFromStorage('files_list') || [];
-    const filesToKeep = filesList.slice(0, Math.floor(this.maxFiles / 2));
-    const filesToRemove = filesList.slice(Math.floor(this.maxFiles / 2));
-    
-    filesToRemove.forEach(id => {
-      localStorage.removeItem(this.prefix + 'file_' + id);
+  // Obtener archivos del usuario
+  async getFiles() {
+    const response = await fetch(`${API_BASE_URL}/files/`, {
+      headers: getAuthHeaders(),
     });
-    
-    this.saveToStorage('files_list', filesToKeep);
-  }
 
-  // Generar reporte real
+    if (!response.ok) {
+      throw new Error('Error obteniendo archivos');
+    }
+
+    return response.json();
+  },
+
+  // Obtener archivo específico
+  async getFile(fileId) {
+    const response = await fetch(`${API_BASE_URL}/files/${fileId}/`, {
+      headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error('Error obteniendo archivo');
+    }
+
+    return response.json();
+  },
+
+  // Eliminar archivo
+  async deleteFile(fileId) {
+    const response = await fetch(`${API_BASE_URL}/files/${fileId}/`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error('Error eliminando archivo');
+    }
+
+    return true;
+  },
+};
+
+// Servicio API para reportes
+const reportService = {
+  // Generar reporte
   async generateReport(fileId, reportConfig) {
-    const file = this.getFile(fileId);
-    if (!file) {
-      throw new Error('Archivo no encontrado');
+    const response = await fetch(`${API_BASE_URL}/reports/generate/`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        file_id: fileId,
+        title: reportConfig.title,
+        description: reportConfig.description,
+        report_type: reportConfig.type,
+        generation_config: {
+          include_charts: reportConfig.includeCharts,
+          include_tables: reportConfig.includeTables,
+          include_recommendations: reportConfig.includeRecommendations,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Error generando reporte');
     }
 
-    const reportId = this.generateId();
-    const report = {
-      id: reportId,
-      title: reportConfig.title,
-      description: reportConfig.description || '',
-      report_type: reportConfig.type || 'comprehensive',
-      source_file_id: fileId,
-      source_filename: file.original_filename,
-      created_at: new Date().toISOString(),
-      status: 'completed',
-      generation_time_seconds: Math.floor(Math.random() * 60) + 30,
-      user_name: 'Usuario',
-      analysis_summary: this.generateAnalysisSummary(file.analysis_data, reportConfig),
-      config: reportConfig
-    };
+    return response.json();
+  },
 
-    this.saveToStorage('report_' + reportId, report);
-    this.addToReportsList(reportId);
-
-    return report;
-  }
-
-  generateAnalysisSummary(analysisData, config) {
-    if (!analysisData) return null;
-
-    return {
-      total_recommendations: analysisData.total_recommendations || 0,
-      security_issues_found: analysisData.security_issues || 0,
-      cost_savings_identified: analysisData.estimated_savings > 0,
-      performance_improvements: analysisData.performance_issues || 0,
-      estimated_monthly_savings: Math.round(analysisData.estimated_savings || 0),
-      top_categories: Object.entries(analysisData.categories || {})
-        .sort(([,a], [,b]) => b - a)
-        .slice(0, 3)
-        .map(([category, count]) => ({ category, count }))
-    };
-  }
-
-  addToReportsList(reportId) {
-    const reportsList = this.getFromStorage('reports_list') || [];
-    reportsList.unshift(reportId);
+  // Obtener reportes del usuario
+  async getReports(filters = {}) {
+    const queryParams = new URLSearchParams();
     
-    if (reportsList.length > 100) {
-      const removedIds = reportsList.splice(100);
-      removedIds.forEach(id => {
-        localStorage.removeItem(this.prefix + 'report_' + id);
-      });
-    }
-    
-    this.saveToStorage('reports_list', reportsList);
-  }
-
-  getAllReports() {
-    const reportsList = this.getFromStorage('reports_list') || [];
-    return reportsList.map(id => this.getFromStorage('report_' + id)).filter(Boolean);
-  }
-
-  getReport(reportId) {
-    return this.getFromStorage('report_' + reportId);
-  }
-
-  deleteReport(reportId) {
-    localStorage.removeItem(this.prefix + 'report_' + reportId);
-    const reportsList = this.getFromStorage('reports_list') || [];
-    const updatedList = reportsList.filter(id => id !== reportId);
-    this.saveToStorage('reports_list', updatedList);
-  }
-
-  getDashboardStats() {
-    const files = this.getAllFiles();
-    const reports = this.getAllReports();
-    
-    let totalRecommendations = 0;
-    let potentialSavings = 0;
-    
-    files.forEach(file => {
-      if (file.analysis_data) {
-        totalRecommendations += file.analysis_data.total_recommendations || 0;
-        potentialSavings += file.analysis_data.estimated_savings || 0;
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value && value !== '') {
+        queryParams.append(key, value);
       }
     });
 
-    return {
-      totalReports: reports.length,
-      totalFiles: files.length,
-      totalRecommendations,
-      potentialSavings: Math.round(potentialSavings)
-    };
-  }
+    const response = await fetch(`${API_BASE_URL}/reports/?${queryParams}`, {
+      headers: getAuthHeaders(),
+    });
 
-  downloadFile(fileId, filename) {
-    const content = "Este sería el contenido real del archivo o reporte descargado.\nContenido simulado para demostración.";
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    
+    if (!response.ok) {
+      throw new Error('Error obteniendo reportes');
+    }
+
+    return response.json();
+  },
+
+  // Obtener reporte específico
+  async getReport(reportId) {
+    const response = await fetch(`${API_BASE_URL}/reports/${reportId}/`, {
+      headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error('Error obteniendo reporte');
+    }
+
+    return response.json();
+  },
+
+  // Obtener HTML del reporte para visualización
+  async getReportHTML(reportId) {
+    const response = await fetch(`${API_BASE_URL}/reports/${reportId}/html/`, {
+      headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error('Error obteniendo HTML del reporte');
+    }
+
+    return response.text(); // Retorna HTML como texto
+  },
+
+  // Descargar reporte en PDF
+  async downloadReportPDF(reportId, filename) {
+    const response = await fetch(`${API_BASE_URL}/reports/${reportId}/download/`, {
+      headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error('Error descargando reporte');
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = filename || 'download.txt';
+    link.download = filename || `reporte_${reportId}.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
-    URL.revokeObjectURL(url);
-  }
-}
+    window.URL.revokeObjectURL(url);
+  },
 
-// Instancia global del servicio
-const localStorageService = new LocalStorageService();
+  // Eliminar reporte
+  async deleteReport(reportId) {
+    const response = await fetch(`${API_BASE_URL}/reports/${reportId}/`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
 
-// HOOKS ACTUALIZADOS QUE USAN EL SISTEMA REAL
+    if (!response.ok) {
+      throw new Error('Error eliminando reporte');
+    }
 
+    return true;
+  },
+};
+
+// Servicio para estadísticas del dashboard
+const dashboardService = {
+  async getStats() {
+    const response = await fetch(`${API_BASE_URL}/dashboard/stats/`, {
+      headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error('Error obteniendo estadísticas');
+    }
+
+    return response.json();
+  },
+};
+
+// HOOKS CORREGIDOS
+
+// Hook para subir archivos
 export const useFileUpload = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const queryClient = useQueryClient();
 
   const uploadFile = async (file) => {
     setIsUploading(true);
     setProgress(0);
-    
+
     try {
-      // Simular progreso realista
+      // Simular progreso mientras se sube
       const progressInterval = setInterval(() => {
         setProgress(prev => {
           const newProgress = prev + Math.random() * 15;
@@ -372,21 +234,26 @@ export const useFileUpload = () => {
         });
       }, 200);
 
-      // Procesar archivo REALMENTE
-      const result = await localStorageService.saveFile(file);
-      
+      const result = await fileService.uploadFile(file);
+
+      // Completar progreso
       clearInterval(progressInterval);
       setProgress(100);
-      
-      toast.success(`✅ Archivo procesado: ${result.rows_count} filas analizadas`);
-      toast.success(`📊 ${result.analysis_data.total_recommendations} recomendaciones encontradas`);
+
+      // Invalidar consultas para refrescar la lista
+      queryClient.invalidateQueries(['files']);
+      queryClient.invalidateQueries(['dashboard-stats']);
+
+      toast.success(`📁 ${file.name} subido y procesado exitosamente`);
       
       return result;
     } catch (error) {
-      toast.error('❌ ' + error.message);
+      console.error('Error uploading file:', error);
+      toast.error(`❌ Error: ${error.message}`);
       throw error;
     } finally {
       setIsUploading(false);
+      // Resetear progreso después de un delay
       setTimeout(() => setProgress(0), 1000);
     }
   };
@@ -394,208 +261,53 @@ export const useFileUpload = () => {
   return { uploadFile, isUploading, progress };
 };
 
-export const useStorageFiles = (options = {}) => {
-  const [data, setData] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const refetch = () => {
-    try {
-      let files = localStorageService.getAllFiles();
-      
-      // Aplicar filtros
-      if (options.search) {
-        files = files.filter(file => 
-          file.original_filename.toLowerCase().includes(options.search.toLowerCase())
-        );
-      }
-      
-      if (options.type && options.type !== 'all') {
-        files = files.filter(file => {
-          const extension = file.original_filename.split('.').pop()?.toLowerCase();
-          return extension === options.type;
-        });
-      }
-      
-      setData(files);
-      setError(null);
-    } catch (error) {
+// Hook para obtener archivos
+export const useStorageFiles = () => {
+  return useQuery({
+    queryKey: ['files'],
+    queryFn: fileService.getFiles,
+    staleTime: 30000, // 30 segundos
+    onError: (error) => {
       console.error('Error fetching files:', error);
-      setError(error);
-      setData([]);
-    }
-  };
-
-  useEffect(() => {
-    setIsLoading(true);
-    setTimeout(() => {
-      refetch();
-      setIsLoading(false);
-    }, 300);
-  }, [options.search, options.type]);
-
-  return { data, isLoading, error, refetch };
-};
-
-export const useReports = (filters = {}) => {
-  const [data, setData] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const refetch = () => {
-    try {
-      let reports = localStorageService.getAllReports();
-      
-      // Aplicar filtros
-      if (filters.search) {
-        reports = reports.filter(report => 
-          report.title.toLowerCase().includes(filters.search.toLowerCase()) ||
-          (report.description && report.description.toLowerCase().includes(filters.search.toLowerCase()))
-        );
-      }
-      
-      if (filters.status) {
-        reports = reports.filter(report => report.status === filters.status);
-      }
-      
-      if (filters.report_type) {
-        reports = reports.filter(report => report.report_type === filters.report_type);
-      }
-      
-      setData(reports);
-      setError(null);
-    } catch (error) {
-      console.error('Error fetching reports:', error);
-      setError(error);
-      setData([]);
-    }
-  };
-
-  useEffect(() => {
-    setIsLoading(true);
-    setTimeout(() => {
-      refetch();
-      setIsLoading(false);
-    }, 300);
-  }, [filters.search, filters.status, filters.report_type]);
-
-  return { data, isLoading, error, refetch };
-};
-
-export const useDashboardStats = () => {
-  const [data, setData] = useState({
-    totalReports: 0,
-    totalFiles: 0,
-    totalRecommendations: 0,
-    potentialSavings: 0
+      toast.error('Error cargando archivos');
+    },
   });
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    setIsLoading(true);
-    setTimeout(() => {
-      try {
-        const stats = localStorageService.getDashboardStats();
-        setData(stats);
-        setError(null);
-      } catch (error) {
-        console.error('Error fetching dashboard stats:', error);
-        setError(error);
-        setData({
-          totalReports: 0,
-          totalFiles: 0,
-          totalRecommendations: 0,
-          potentialSavings: 0
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    }, 300);
-  }, []);
-
-  return { data, isLoading, error };
 };
 
-export const useRecentReports = (limit = 5) => {
-  const [data, setData] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    setIsLoading(true);
-    setTimeout(() => {
-      try {
-        const reports = localStorageService.getAllReports().slice(0, limit);
-        setData(reports);
-        setError(null);
-      } catch (error) {
-        console.error('Error fetching recent reports:', error);
-        setError(error);
-        setData([]);
-      } finally {
-        setIsLoading(false);
-      }
-    }, 200);
-  }, [limit]);
-
-  return { data, isLoading, error };
-};
-
-export const useRecentActivity = (limit = 5) => {
-  const [data, setData] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    setIsLoading(true);
-    setTimeout(() => {
-      try {
-        const files = localStorageService.getAllFiles().slice(0, limit);
-        const activities = files.map(file => ({
-          id: file.id,
-          description: `Archivo ${file.original_filename} procesado: ${file.rows_count} filas`,
-          timestamp: file.upload_date,
-          type: 'file_processed'
-        }));
-        setData(activities);
-      } catch (error) {
-        console.error('Error fetching activity:', error);
-        setData([{
-          id: 'demo',
-          description: 'Sistema funcionando correctamente',
-          timestamp: new Date().toISOString(),
-          type: 'system'
-        }]);
-      } finally {
-        setIsLoading(false);
-      }
-    }, 200);
-  }, [limit]);
-
-  return { data, isLoading };
-};
-
-// Hook para generar reportes REALES
+// Hook para generar reportes
 export const useReportGeneration = () => {
   const [isGenerating, setIsGenerating] = useState(false);
+  const queryClient = useQueryClient();
 
   const generateReport = async (fileId, reportConfig) => {
     setIsGenerating(true);
-    
+
     try {
-      toast.loading('Generando reporte...', { id: 'generating' });
-      
-      // Simular tiempo de generación realista
-      await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000));
-      
-      const report = await localStorageService.generateReport(fileId, reportConfig);
-      
-      toast.success(`🎉 Reporte "${report.title}" generado exitosamente`, { id: 'generating' });
-      toast.success(`📈 ${report.analysis_summary?.total_recommendations || 0} recomendaciones incluidas`);
-      
+      toast.loading('🔄 Analizando datos y generando reporte...', { id: 'generating' });
+
+      const report = await reportService.generateReport(fileId, reportConfig);
+
+      // Invalidar consultas para refrescar listas
+      queryClient.invalidateQueries(['reports']);
+      queryClient.invalidateQueries(['recent-reports']);
+      queryClient.invalidateQueries(['dashboard-stats']);
+
+      toast.success(
+        `🎉 Reporte "${report.title}" generado exitosamente`, 
+        { id: 'generating' }
+      );
+
+      // Mostrar estadísticas del reporte si están disponibles
+      if (report.analysis_summary) {
+        toast.success(
+          `📊 ${report.analysis_summary.total_recommendations || 0} recomendaciones incluidas`
+        );
+      }
+
       return report;
     } catch (error) {
-      toast.error('❌ Error generando reporte: ' + error.message, { id: 'generating' });
+      console.error('Error generating report:', error);
+      toast.error(`❌ Error: ${error.message}`, { id: 'generating' });
       throw error;
     } finally {
       setIsGenerating(false);
@@ -605,94 +317,148 @@ export const useReportGeneration = () => {
   return { generateReport, isGenerating };
 };
 
-// Hook para descargas REALES
-export const useDownload = () => {
-  const downloadFile = (fileId, filename) => {
-    try {
-      localStorageService.downloadFile(fileId, filename);
+// Hook para obtener reportes
+export const useReports = (filters = {}) => {
+  return useQuery({
+    queryKey: ['reports', filters],
+    queryFn: () => reportService.getReports(filters),
+    staleTime: 30000,
+    onError: (error) => {
+      console.error('Error fetching reports:', error);
+      toast.error('Error cargando reportes');
+    },
+  });
+};
+
+// Hook para reportes recientes
+export const useRecentReports = (limit = 5) => {
+  return useQuery({
+    queryKey: ['recent-reports', limit],
+    queryFn: () => reportService.getReports({ limit, ordering: '-created_at' }),
+    staleTime: 30000,
+    select: (data) => data.results?.slice(0, limit) || data.slice(0, limit) || [],
+    onError: (error) => {
+      console.error('Error fetching recent reports:', error);
+    },
+  });
+};
+
+// Hook para estadísticas del dashboard
+export const useDashboardStats = () => {
+  return useQuery({
+    queryKey: ['dashboard-stats'],
+    queryFn: dashboardService.getStats,
+    staleTime: 60000, // 1 minuto
+    onError: (error) => {
+      console.error('Error fetching dashboard stats:', error);
+    },
+  });
+};
+
+// Hook para obtener HTML de reporte
+export const useReportHTML = (reportId) => {
+  return useQuery({
+    queryKey: ['report-html', reportId],
+    queryFn: () => reportService.getReportHTML(reportId),
+    enabled: !!reportId,
+    staleTime: 300000, // 5 minutos
+    onError: (error) => {
+      console.error('Error fetching report HTML:', error);
+      toast.error('Error cargando visualización del reporte');
+    },
+  });
+};
+
+// Hook para mutaciones de reportes
+export const useReportMutations = () => {
+  const queryClient = useQueryClient();
+
+  const deleteReport = useMutation({
+    mutationFn: reportService.deleteReport,
+    onSuccess: () => {
+      queryClient.invalidateQueries(['reports']);
+      queryClient.invalidateQueries(['recent-reports']);
+      queryClient.invalidateQueries(['dashboard-stats']);
+      toast.success('Reporte eliminado exitosamente');
+    },
+    onError: (error) => {
+      toast.error(`Error eliminando reporte: ${error.message}`);
+    },
+  });
+
+  const downloadReport = useMutation({
+    mutationFn: ({ reportId, filename }) => 
+      reportService.downloadReportPDF(reportId, filename),
+    onSuccess: () => {
       toast.success('📥 Descarga iniciada');
-    } catch (error) {
-      toast.error('❌ Error en descarga: ' + error.message);
-    }
+    },
+    onError: (error) => {
+      toast.error(`Error descargando reporte: ${error.message}`);
+    },
+  });
+
+  return {
+    deleteReport,
+    downloadReport,
   };
-
-  const downloadReport = (reportId, reportTitle) => {
-    try {
-      const report = localStorageService.getReport(reportId);
-      if (!report) {
-        throw new Error('Reporte no encontrado');
-      }
-      
-      // Simular contenido del reporte
-      const reportContent = `
-REPORTE: ${report.title}
-===============================
-
-Generado el: ${new Date(report.created_at).toLocaleString()}
-Archivo fuente: ${report.source_filename}
-Tipo de análisis: ${report.report_type}
-
-RESUMEN EJECUTIVO
------------------
-Total de recomendaciones: ${report.analysis_summary?.total_recommendations || 0}
-Problemas de seguridad: ${report.analysis_summary?.security_issues_found || 0}
-Ahorros estimados: ${report.analysis_summary?.estimated_monthly_savings || 0}/mes
-
-CONFIGURACIÓN
--------------
-Incluye gráficos: ${report.config?.includeCharts ? 'Sí' : 'No'}
-Incluye tablas: ${report.config?.includeTables ? 'Sí' : 'No'}
-Incluye recomendaciones: ${report.config?.includeRecommendations ? 'Sí' : 'No'}
-
-[Este sería el contenido completo del reporte con análisis detallado]
-      `;
-      
-      const blob = new Blob([reportContent], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${reportTitle || 'reporte'}.txt`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      URL.revokeObjectURL(url);
-      toast.success('📥 Reporte descargado');
-    } catch (error) {
-      toast.error('❌ Error descargando reporte: ' + error.message);
-    }
-  };
-
-  return { downloadFile, downloadReport };
 };
 
-// Hook para eliminar archivos/reportes
-export const useDelete = () => {
-  const deleteFile = (fileId, filename) => {
-    try {
-      localStorageService.deleteFile(fileId);
-      toast.success(`🗑️ Archivo "${filename}" eliminado`);
-      return true;
-    } catch (error) {
-      toast.error('❌ Error eliminando archivo: ' + error.message);
-      return false;
-    }
-  };
+// Hook para mutaciones de archivos
+export const useFileMutations = () => {
+  const queryClient = useQueryClient();
 
-  const deleteReport = (reportId, reportTitle) => {
-    try {
-      localStorageService.deleteReport(reportId);
-      toast.success(`🗑️ Reporte "${reportTitle}" eliminado`);
-      return true;
-    } catch (error) {
-      toast.error('❌ Error eliminando reporte: ' + error.message);
-      return false;
-    }
-  };
+  const deleteFile = useMutation({
+    mutationFn: fileService.deleteFile,
+    onSuccess: () => {
+      queryClient.invalidateQueries(['files']);
+      queryClient.invalidateQueries(['dashboard-stats']);
+      toast.success('Archivo eliminado exitosamente');
+    },
+    onError: (error) => {
+      toast.error(`Error eliminando archivo: ${error.message}`);
+    },
+  });
 
-  return { deleteFile, deleteReport };
+  return {
+    deleteFile,
+  };
 };
 
-// Exportar servicio para uso directo si es necesario
-export { localStorageService };
+// Hook para actividad reciente (mock temporal hasta implementar en backend)
+export const useRecentActivity = (limit = 5) => {
+  const [data, setData] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    setIsLoading(true);
+    // Simular carga de actividad reciente
+    setTimeout(() => {
+      setData([
+        {
+          id: 'activity-1',
+          description: 'Archivo procesado: ejemplo_data.csv (454 filas)',
+          timestamp: new Date(Date.now() - 21 * 60 * 1000).toISOString(),
+          type: 'file_processed'
+        },
+        {
+          id: 'activity-2', 
+          description: 'Reporte generado: Análisis Completo - ejemplo 2.csv',
+          timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
+          type: 'report_generated'
+        },
+        {
+          id: 'activity-3',
+          description: 'Archivo procesado: ejemplo2.csv (297 filas)', 
+          timestamp: new Date(Date.now() - 65 * 60 * 1000).toISOString(),
+          type: 'file_processed'
+        }
+      ].slice(0, limit));
+      setIsLoading(false);
+    }, 300);
+  }, [limit]);
+
+  return { data, isLoading };
+};
+
+// Export del servicio para uso directo si es necesario
+export { fileService, reportService, dashboardService };

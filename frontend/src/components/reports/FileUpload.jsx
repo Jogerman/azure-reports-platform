@@ -1,4 +1,4 @@
-// src/components/reports/FileUpload.jsx
+// src/components/reports/FileUpload.jsx - VERSIÓN CORREGIDA
 import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { 
@@ -122,7 +122,7 @@ const FileUpload = ({ onUploadComplete, onClose }) => {
     setSelectedFiles(prev => prev.filter(f => f.id !== fileId));
   };
 
-  // Subir archivos
+  // Subir archivos - CORREGIDO PARA CERRAR MODAL AUTOMÁTICAMENTE
   const handleUpload = async () => {
     if (selectedFiles.length === 0) {
       toast.error('Selecciona al menos un archivo');
@@ -130,6 +130,7 @@ const FileUpload = ({ onUploadComplete, onClose }) => {
     }
 
     const filesToUpload = selectedFiles.filter(f => f.status === 'pending');
+    const completedFiles = [];
     
     for (const fileObj of filesToUpload) {
       try {
@@ -145,6 +146,12 @@ const FileUpload = ({ onUploadComplete, onClose }) => {
           prev.map(f => f.id === fileObj.id ? { ...f, status: 'completed', result } : f)
         );
 
+        // Agregar a la lista de archivos completados
+        completedFiles.push({
+          ...result,
+          originalFileObj: fileObj
+        });
+
       } catch (error) {
         // Actualizar estado a "error"
         setSelectedFiles(prev => 
@@ -154,12 +161,16 @@ const FileUpload = ({ onUploadComplete, onClose }) => {
       }
     }
 
-    // Notificar completado si hay callback
-    if (onUploadComplete) {
-      const completedFiles = selectedFiles.filter(f => f.status === 'completed');
-      if (completedFiles.length > 0) {
-        onUploadComplete(completedFiles);
-      }
+    // CORRECCIÓN: Llamar onUploadComplete y cerrar modal DESPUÉS de que todo termine
+    if (completedFiles.length > 0) {
+      // Esperar un momento para que el usuario vea el éxito
+      setTimeout(() => {
+        if (onUploadComplete) {
+          onUploadComplete(completedFiles);
+        }
+        // Cerrar modal automáticamente
+        onClose();
+      }, 1500);
     }
   };
 
@@ -231,30 +242,24 @@ const FileUpload = ({ onUploadComplete, onClose }) => {
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />
             
-            <div className="space-y-4">
-              <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto">
-                <Cloud className="w-8 h-8 text-gray-400" />
+            <div className="flex flex-col items-center space-y-4">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
+                <Cloud className="w-8 h-8 text-blue-600" />
               </div>
               
               <div>
-                <p className="text-lg font-medium text-gray-900">
-                  {dragActive ? 'Suelta los archivos aquí' : 'Arrastra archivos CSV aquí'}
-                </p>
-                <p className="text-sm text-gray-500 mt-1">
-                  o{' '}
+                <p className="text-lg font-medium text-gray-900 mb-1">
+                  Arrastra archivos aquí o{' '}
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="text-blue-600 hover:text-blue-700 font-medium"
+                    className="text-blue-600 hover:text-blue-700 underline"
                   >
-                    haz clic para seleccionar
+                    selecciona archivos
                   </button>
                 </p>
-              </div>
-              
-              <div className="text-xs text-gray-400 space-y-1">
-                <p>• Solo archivos CSV (máximo 50MB cada uno)</p>
-                <p>• Archivos de Azure Advisor recomendados</p>
-                <p>• Se procesan automáticamente después de subir</p>
+                <p className="text-sm text-gray-500">
+                  Solo archivos CSV, máximo 50MB por archivo
+                </p>
               </div>
             </div>
           </div>
@@ -262,11 +267,11 @@ const FileUpload = ({ onUploadComplete, onClose }) => {
           {/* Lista de archivos seleccionados */}
           {selectedFiles.length > 0 && (
             <div className="mt-6">
-              <h4 className="text-sm font-medium text-gray-900 mb-3">
+              <h4 className="font-medium text-gray-900 mb-3">
                 Archivos seleccionados ({selectedFiles.length})
               </h4>
               
-              <div className="space-y-3 max-h-40 overflow-y-auto">
+              <div className="space-y-3 max-h-60 overflow-y-auto">
                 {selectedFiles.map((fileObj) => (
                   <motion.div
                     key={fileObj.id}
@@ -274,7 +279,7 @@ const FileUpload = ({ onUploadComplete, onClose }) => {
                     animate={{ opacity: 1, y: 0 }}
                     className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                   >
-                    <div className="flex items-center space-x-3 flex-1 min-w-0">
+                    <div className="flex items-center space-x-3">
                       {getFileStatusIcon(fileObj.status)}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900 truncate">
@@ -324,6 +329,23 @@ const FileUpload = ({ onUploadComplete, onClose }) => {
               </div>
             </div>
           )}
+
+          {/* Información adicional */}
+          <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex items-start space-x-2">
+              <File className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div className="text-sm">
+                <p className="font-medium text-blue-900 mb-1">
+                  💡 Solo archivos CSV máximo 50MB cada uno
+                </p>
+                <ul className="text-blue-700 space-y-1">
+                  <li>• Archivos de Azure Advisor recomendados</li>
+                  <li>• Se procesarán automáticamente después de subir</li>
+                  <li>• Podrás generar reportes inmediatamente</li>
+                </ul>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Footer */}
@@ -339,15 +361,16 @@ const FileUpload = ({ onUploadComplete, onClose }) => {
           <div className="flex items-center space-x-3">
             <button
               onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              disabled={isUploading}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
             >
-              Cancelar
+              {isUploading ? 'Subiendo...' : 'Cancelar'}
             </button>
             
             <button
               onClick={handleUpload}
               disabled={isUploading || selectedFiles.filter(f => f.status === 'pending').length === 0}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
             >
               {isUploading ? (
                 <>
@@ -357,7 +380,7 @@ const FileUpload = ({ onUploadComplete, onClose }) => {
               ) : (
                 <>
                   <Upload className="w-4 h-4 mr-2" />
-                  Subir Archivos
+                  Subir {selectedFiles.filter(f => f.status === 'pending').length} Archivo(s)
                 </>
               )}
             </button>

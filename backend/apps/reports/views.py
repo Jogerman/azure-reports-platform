@@ -34,8 +34,8 @@ class CSVFileViewSet(viewsets.ModelViewSet):
         return CSVFileSerializer
     
     def get_parsers(self):
-        """Usar MultiPartParser para uploads"""
-        if self.action == 'create':
+    # Usar el parser correcto basado en el método HTTP
+        if self.request.method == 'POST':
             return [MultiPartParser(), FormParser()]
         return super().get_parsers()
     

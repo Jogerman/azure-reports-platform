@@ -4,6 +4,7 @@ from django.db import models
 # apps/reports/models.py - Migrado desde tu código existente
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import User
 import uuid
 from django.utils import timezone
 
@@ -11,7 +12,7 @@ User = get_user_model()
 
 class CSVFile(models.Model):
     """Archivos CSV subidos para análisis - Migrado y mejorado"""
-    STATUS_CHOICES = [
+    PROCESSING_STATUS_CHOICES = [
         ('pending', 'Pendiente'),
         ('processing', 'Procesando'),
         ('completed', 'Completado'),
@@ -19,25 +20,31 @@ class CSVFile(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='csv_files')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
     
     # Información del archivo
     original_filename = models.CharField(max_length=255)
-    file_size = models.PositiveIntegerField()
+    file_size = models.BigIntegerField()
     content_type = models.CharField(max_length=100, default='text/csv')
+    processing_status = models.CharField(
+        max_length=20, 
+        choices=PROCESSING_STATUS_CHOICES, 
+        default='pending'
+    )
     
     # Azure Storage info
-    azure_blob_url = models.URLField(blank=True)
-    azure_blob_name = models.CharField(max_length=255, blank=True)
+    azure_blob_url = models.URLField(null=True, blank=True)
+    azure_blob_name = models.CharField(max_length=255, null=True, blank=True)
+    error_message = models.TextField(null=True, blank=True)
     
     # Estado de procesamiento
-    processing_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    processing_status = models.CharField(max_length=20, choices=PROCESSING_STATUS_CHOICES, default='pending')
     error_message = models.TextField(blank=True)
     
     # Metadatos del análisis
     rows_count = models.PositiveIntegerField(null=True, blank=True)
     columns_count = models.PositiveIntegerField(null=True, blank=True)
-    analysis_data = models.JSONField(default=dict)
+    analysis_data = models.JSONField(default=dict, blank=True)
     
     # Timestamps
     upload_date = models.DateTimeField(auto_now_add=True)

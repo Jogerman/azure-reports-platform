@@ -1,8 +1,9 @@
 # apps/reports/serializers.py
 from rest_framework import serializers
 from .models import CSVFile, Report
-from .analyzers.csv_analyzer import EnhancedCSVAnalyzer
-import pandas as pd
+import logging
+
+logger = logging.getLogger(__name__)
 
 class CSVFileSerializer(serializers.ModelSerializer):
     """Serializer para archivos CSV"""
@@ -61,20 +62,45 @@ class CSVFileUploadSerializer(serializers.ModelSerializer):
         file = validated_data.pop('file')
         user = self.context['request'].user
         
-        # Crear instancia
-        csv_file = CSVFile.objects.create(
-            user=user,
-            original_filename=file.name,
-            file_size=file.size,
-            content_type=file.content_type,
-            processing_status='pending'
-        )
-        
-        # Procesar archivo de forma asíncrona (implementar con Celery)
-        from .tasks import process_csv_file
-        process_csv_file.delay(csv_file.id, file)
-        
-        return csv_file
+        try:
+            # Crear instancia del CSV
+            csv_file = CSVFile.objects.create(
+                user=user,
+                original_filename=file.name,
+                file_size=file.size,
+                content_type=file.content_type if hasattr(file, 'content_type') else 'text/csv',
+                processing_status='pending'
+            )
+            
+            # Guardar el archivo temporalmente y obtener su path
+            # NO pasamos el objeto InMemoryUploadedFile directamente a Celery
+            import tempfile
+            import os
+            
+            # Crear archivo temporal
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
+                # Escribir el contenido del archivo
+                for chunk in file.chunks():
+                    tmp_file.write(chunk)
+                temp_file_path = tmp_file.name
+            
+            # Procesar archivo de forma asíncrona con el path del archivo temporal
+            from .tasks import process_csv_file
+            process_csv_file.delay(csv_file.id, temp_file_path)
+            
+            logger.info(f"CSV file {csv_file.id} created and queued for processing")
+            
+            return csv_file
+            
+        except Exception as e:
+            logger.error(f"Error creating CSV file: {str(e)}")
+            # Si algo falla, asegurarnos de limpiar
+            if 'temp_file_path' in locals():
+                try:
+                    os.unlink(temp_file_path)
+                except:
+                    pass
+            raise serializers.ValidationError(f"Error procesando archivo: {str(e)}")
 
 class ReportSerializer(serializers.ModelSerializer):
     """Serializer para reportes"""

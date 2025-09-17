@@ -57,6 +57,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'apps.core.middleware.ErrorHandlingMiddleware',  # Middleware personalizado para manejo de errores
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -135,6 +136,7 @@ AUTH_USER_MODEL = 'authentication.User'
 
 # REST Framework
 REST_FRAMEWORK = {
+    'EXCEPTION_HANDLER': 'apps.core.exceptions.custom_exception_handler',  # ← AGREGAR
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],

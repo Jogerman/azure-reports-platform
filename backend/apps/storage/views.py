@@ -67,25 +67,29 @@ class FilesListView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class FileUploadView(APIView):
-    """Vista para subir archivos CSV - GUARDAR EN BD SOLAMENTE (NO AZURE BLOB)"""
     permission_classes = [IsAuthenticated]
-    parser_classes = (MultiPartParser, FormParser)
+    parser_classes = (MultiPartParser, FormParser)  # FIX: PARSERS CORRECTOS
     
     def post(self, request):
         try:
+            logger.info(f"Upload request recibido. Content-Type: {request.content_type}")
+            logger.info(f"FILES: {list(request.FILES.keys())}")
+            
             uploaded_file = request.FILES.get('file')
             if not uploaded_file:
                 return Response({
                     'error': 'No se recibió ningún archivo'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Validar que es CSV
+            # Validar CSV
             if not uploaded_file.name.endswith('.csv'):
                 return Response({
                     'error': 'Solo se permiten archivos CSV'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Crear CSVFile - SOLO EN BASE DE DATOS POR AHORA
+            logger.info(f"Procesando archivo: {uploaded_file.name}")
+            
+            # Crear CSVFile
             csv_file = CSVFile.objects.create(
                 user=request.user,
                 original_filename=uploaded_file.name,
@@ -93,49 +97,52 @@ class FileUploadView(APIView):
                 processing_status='processing'
             )
             
-            # Procesar CSV en memoria
-            file_content = uploaded_file.read().decode('utf-8')
-            csv_reader = csv.reader(io.StringIO(file_content))
-            
-            rows = list(csv_reader)
-            headers = rows[0] if rows else []
-            
-            # Actualizar datos del archivo
-            csv_file.rows_count = len(rows) - 1 if rows else 0
-            csv_file.columns_count = len(headers)
-            csv_file.processing_status = 'completed'
-            
-            # Análisis básico basado en Azure Advisor
-            csv_file.analysis_data = {
-                'total_recommendations': len(rows) - 1 if rows else 0,
-                'estimated_savings': (len(rows) - 1) * 100 if rows else 0,
-                'categories': {
-                    'security': int((len(rows) - 1) * 0.4) if rows else 0,
-                    'cost': int((len(rows) - 1) * 0.3) if rows else 0,
-                    'performance': int((len(rows) - 1) * 0.2) if rows else 0,
-                    'reliability': int((len(rows) - 1) * 0.1) if rows else 0,
-                },
-                'headers': headers,
-                'sample_data': rows[1:6] if len(rows) > 1 else []  # Primeras 5 filas de datos
-            }
-            
-            csv_file.save()
-            
-            logger.info(f"CSV procesado: {csv_file.original_filename} - {csv_file.rows_count} filas")
-            
-            # RESPUESTA EN FORMATO ESPERADO
-            return Response({
-                'id': str(csv_file.id),
-                'original_filename': csv_file.original_filename,
-                'file_size': csv_file.file_size,
-                'processing_status': csv_file.processing_status,
-                'rows_count': csv_file.rows_count,
-                'columns_count': csv_file.columns_count,
-                'analysis_data': csv_file.analysis_data,
-                'created_at': csv_file.upload_date.isoformat(),  # ← Mapear correctamente
-                'message': 'Archivo procesado exitosamente'
-            }, status=status.HTTP_201_CREATED)
-            
+            # Procesar CSV
+            try:
+                file_content = uploaded_file.read().decode('utf-8')
+                csv_reader = csv.reader(io.StringIO(file_content))
+                rows = list(csv_reader)
+                headers = rows[0] if rows else []
+                
+                # Actualizar datos
+                csv_file.rows_count = len(rows) - 1 if rows else 0
+                csv_file.columns_count = len(headers)
+                csv_file.processing_status = 'completed'
+                
+                # Análisis básico
+                csv_file.analysis_data = {
+                    'total_recommendations': len(rows) - 1 if rows else 0,
+                    'estimated_savings': (len(rows) - 1) * 100 if rows else 0,
+                    'categories': {
+                        'security': int((len(rows) - 1) * 0.4) if rows else 0,
+                        'cost': int((len(rows) - 1) * 0.3) if rows else 0,
+                        'performance': int((len(rows) - 1) * 0.2) if rows else 0,
+                        'reliability': int((len(rows) - 1) * 0.1) if rows else 0,
+                    }
+                }
+                
+                csv_file.save()
+                
+                logger.info(f"CSV procesado exitosamente: {csv_file.original_filename}")
+                
+                return Response({
+                    'id': str(csv_file.id),
+                    'original_filename': csv_file.original_filename,
+                    'file_size': csv_file.file_size,
+                    'processing_status': csv_file.processing_status,
+                    'rows_count': csv_file.rows_count,
+                    'columns_count': csv_file.columns_count,
+                    'analysis_data': csv_file.analysis_data,
+                    'created_at': csv_file.upload_date.isoformat(),
+                    'message': 'Archivo procesado exitosamente'
+                }, status=status.HTTP_201_CREATED)
+                
+            except Exception as e:
+                csv_file.processing_status = 'failed'
+                csv_file.error_message = str(e)
+                csv_file.save()
+                raise e
+                
         except Exception as e:
             logger.error(f"Error procesando archivo: {str(e)}")
             return Response({

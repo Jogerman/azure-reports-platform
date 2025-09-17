@@ -18,30 +18,26 @@ logger = logging.getLogger(__name__)
 class ReportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Report
-        # USAR SOLO CAMPOS QUE EXISTEN EN TU MODELO
-        fields = [
-            'id', 'title', 'description', 'report_type', 'status',
-            'created_at', 'user'
-            # REMOVER: 'source_filename', 'generation_time_seconds', 'analysis_summary' 
-            # si no existen en tu modelo
-        ]
+        # USAR SOLO CAMPOS QUE EXISTEN - revisar tu modelo
+        fields = ['id', 'title', 'description', 'report_type', 'status', 'created_at', 'user']
         read_only_fields = ['id', 'created_at', 'user']
 
+
 class ReportViewSet(ModelViewSet):
-    """ViewSet para gestión de reportes"""
     serializer_class = ReportSerializer
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        queryset = Report.objects.filter(user=self.request.user).order_by('-created_at')
+        # FIX: NO aplicar limit antes de order_by
+        queryset = Report.objects.filter(user=self.request.user)
         
-        # Filtros opcionales
-        limit = self.request.query_params.get('limit')
+        # Aplicar ordering ANTES que limit
         ordering = self.request.query_params.get('ordering', '-created_at')
-        
         if ordering:
             queryset = queryset.order_by(ordering)
             
+        # Aplicar limit DESPUÉS del ordering
+        limit = self.request.query_params.get('limit')
         if limit:
             try:
                 queryset = queryset[:int(limit)]
@@ -58,32 +54,41 @@ class ReportViewSet(ModelViewSet):
     def generate(self, request):
         try:
             file_id = request.data.get('file_id')
-                
+            
             if not file_id:
                 return Response({'error': 'file_id es requerido'}, status=400)
-                
-                # Buscar CSV file - USAR UUID REAL
+            
+            # Buscar CSV file
             try:
-                    csv_file = CSVFile.objects.get(id=file_id, user=request.user)
-            except (CSVFile.DoesNotExist, ValueError):
-                 return Response({'error': 'Archivo no encontrado'}, status=404)
-                
-                # Crear reporte con SOLO campos que existen
-            report = Report.objects.create(
-                user=request.user,
-                title=request.data.get('title', 'Reporte sin título'),
-                description=request.data.get('description', ''),
-                report_type=request.data.get('report_type', 'comprehensive'),
-                status='completed',  # Si tu modelo no tiene otros estados
-            )
-                
+                csv_file = CSVFile.objects.get(id=file_id, user=request.user)
+            except (CSVFile.DoesNotExist, ValueError) as e:
+                logger.error(f"CSV file no encontrado: {file_id}, error: {e}")
+                return Response({'error': 'Archivo no encontrado'}, status=404)
+            
+            # FIX: Crear reporte CON relación a csv_file si existe en el modelo
+            report_data = {
+                'user': request.user,
+                'title': request.data.get('title', 'Reporte sin título'),
+                'description': request.data.get('description', ''),
+                'report_type': request.data.get('report_type', 'comprehensive'),
+                'status': 'completed',
+            }
+            
+            # Si tu modelo Report tiene csv_file_id, agregarlo:
+            # report_data['csv_file'] = csv_file  # Descomenta si existe
+            
+            report = Report.objects.create(**report_data)
+            
+            logger.info(f"Reporte creado: {report.id}")
+            
             serializer = ReportSerializer(report)
             return Response(serializer.data, status=201)
-                
+            
         except Exception as e:
             logger.error(f"Error generando reporte: {str(e)}")
             return Response({'error': str(e)}, status=500)
-
+        
+        
     @action(detail=True, methods=['get'])
     def html(self, request, pk=None):
         """Endpoint para obtener HTML del reporte"""

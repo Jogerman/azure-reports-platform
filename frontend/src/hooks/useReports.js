@@ -112,35 +112,31 @@ const refreshTokenIfNeeded = async () => {
 const fileService = {
   async uploadFile(file) {
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', file);  // SOLO esto, no JSON
     
-    // Agregar metadatos opcionales
-    formData.append('file_type', 'csv');
-    formData.append('source', 'azure_advisor');
-
     try {
-      console.log('📤 Iniciando upload de archivo:', file.name);
+      console.log('📤 Subiendo archivo:', file.name);
       
       const response = await fetchWithAuth(`${API_BASE_URL}/files/upload/`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${getAuthToken()}`,
-          // NO agregar Content-Type para FormData - el browser lo hace automáticamente
+          // NO Content-Type - FormData lo maneja automáticamente
         },
-        body: formData,
+        body: formData,  // FormData, NO JSON
       });
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ 
-          detail: 'Error de conexión con el servidor' 
+          detail: 'Error de servidor' 
         }));
-        throw new Error(error.detail || error.error || `Error ${response.status}: ${response.statusText}`);
+        throw new Error(error.detail || error.error || `Error ${response.status}`);
       }
 
       const result = await response.json();
       console.log('✅ Upload exitoso:', result);
-      
       return result;
+      
     } catch (error) {
       console.error('❌ Error en upload:', error);
       throw error;

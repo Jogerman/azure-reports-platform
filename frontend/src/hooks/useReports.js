@@ -4,24 +4,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 
 // Import configuración de API
-import { API_CONFIG } from '../config/api';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api';
 
-// API Base URL - usando configuración centralizada
-const API_BASE_URL = API_CONFIG.BASE_URL;
-
-// Helper para obtener token de autenticación
 const getAuthToken = () => {
-  // Buscar en múltiples lugares
-  const token = 
-    localStorage.getItem('access_token') || 
-    sessionStorage.getItem('access_token') ||
-    localStorage.getItem('accessToken') ||
-    sessionStorage.getItem('accessToken') ||
-    localStorage.getItem('token') ||
-    sessionStorage.getItem('token');
-  
-  console.log('🔐 Token encontrado:', token ? `${token.substring(0, 20)}...` : 'NO ENCONTRADO');
-  return token;
+  return localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
 };
 
 
@@ -44,12 +30,10 @@ const getAuthHeaders = () => {
   return headers;
 };
 
-const isAuthenticated = () => {
-  const token = getAuthToken();
+const isTokenValid = (token) => {
   if (!token) return false;
   
   try {
-    // Verificar si el token no está expirado (básico)
     const payload = JSON.parse(atob(token.split('.')[1]));
     const now = Date.now() / 1000;
     return payload.exp > now;
@@ -59,14 +43,12 @@ const isAuthenticated = () => {
   }
 };
 
-
 const refreshTokenIfNeeded = async () => {
   const refreshToken = localStorage.getItem('refresh_token') || 
                       sessionStorage.getItem('refresh_token');
   
   if (!refreshToken) {
     console.warn('⚠️ No hay refresh token, redirigiendo al login');
-    // Limpiar storage y redirigir
     localStorage.clear();
     sessionStorage.clear();
     window.location.href = '/';
@@ -92,7 +74,6 @@ const refreshTokenIfNeeded = async () => {
       return true;
     } else {
       console.error('❌ Error refrescando token');
-      // Token refresh falló, limpiar y redirigir
       localStorage.clear();
       sessionStorage.clear();
       window.location.href = '/';
@@ -111,30 +92,41 @@ const refreshTokenIfNeeded = async () => {
 // Servicio API para archivos
 const fileService = {
   async uploadFile(file) {
+    // ✅ CORRECTO: Crear FormData apropiadamente
     const formData = new FormData();
-    formData.append('file', file);  // SOLO esto, no JSON
+    formData.append('file', file);
     
     try {
-      console.log('📤 Subiendo archivo:', file.name);
+      console.log('📤 Subiendo archivo:', {
+        name: file.name,
+        size: file.size,
+        type: file.type
+      });
       
+      // ✅ CRÍTICO: NO incluir Content-Type, FormData lo maneja automáticamente
       const response = await fetchWithAuth(`${API_BASE_URL}/files/upload/`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${getAuthToken()}`,
-          // NO Content-Type - FormData lo maneja automáticamente
-        },
-        body: formData,  // FormData, NO JSON
+        body: formData,  // ← Solo FormData, sin headers adicionales
       });
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ 
-          detail: 'Error de servidor' 
-        }));
-        throw new Error(error.detail || error.error || `Error ${response.status}`);
+        const errorData = await response.text();
+        console.error('❌ Error response:', errorData);
+        
+        let errorMessage = 'Error al subir archivo';
+        try {
+          const errorJson = JSON.parse(errorData);
+          errorMessage = errorJson.error || errorMessage;
+        } catch (e) {
+          // Si no es JSON, usar el texto plano
+          errorMessage = errorData || errorMessage;
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();
-      console.log('✅ Upload exitoso:', result);
+      console.log('✅ Archivo subido exitosamente:', result);
       return result;
       
     } catch (error) {
@@ -145,36 +137,23 @@ const fileService = {
 
  async getFiles() {
     try {
-      console.log('📁 Obteniendo archivos del backend...');
+      console.log('📂 Obteniendo lista de archivos...');
+      
       const response = await fetchWithAuth(`${API_BASE_URL}/files/`);
-
+      
       if (!response.ok) {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
-
-      const data = await response.json();
-      console.log('✅ Archivos obtenidos del backend:', data);
       
-      // Asegurar formato correcto
-      if (data && Array.isArray(data.results)) {
-        return data;
-      } else if (Array.isArray(data)) {
-        return { results: data, count: data.length };
-      } else {
-        console.warn('⚠️ Formato de respuesta inesperado:', data);
-        return { results: [], count: 0 };
-      }
+      const data = await response.json();
+      console.log('✅ Archivos obtenidos:', data);
+      return data;
       
     } catch (error) {
-      console.error('❌ Error obteniendo archivos del backend:', error);
-      
-      // FALLBACK VACÍO - NO MOCK DATA para evitar IDs falsos
-      console.log('🔄 Retornando array vacío (sin mock data)');
-      return {
-        results: [],
-        count: 0
-      };
+      console.error('❌ Error obteniendo archivos:', error);
+      throw error;
     }
+  } 
   },
   // Obtener archivo específico
   async getFile(fileId) {
@@ -203,108 +182,88 @@ const fileService = {
       console.error('Delete file error:', error);
       throw error;
     }
-  },
+  }
 };
-
 const fetchWithAuth = async (url, options = {}) => {
-  // Verificar autenticación antes de hacer la petición
-  if (!isAuthenticated()) {
-    console.log('🔄 Token expirado, intentando refresh...');
+  let token = getAuthToken();
+  
+  if (!isTokenValid(token)) {
     const refreshed = await refreshTokenIfNeeded();
     if (!refreshed) {
-      throw new Error('Sesión expirada');
+      throw new Error('No se pudo autenticar');
     }
+    token = getAuthToken();
   }
   
-  // Hacer petición con headers de autenticación
-  const response = await fetch(url, {
+  const defaultHeaders = {
+    'Authorization': `Bearer ${token}`,
+  };
+  
+  // FIX: NO agregar Content-Type para FormData
+  if (!options.body || !(options.body instanceof FormData)) {
+    defaultHeaders['Content-Type'] = 'application/json';
+  }
+  
+  return fetch(url, {
     ...options,
     headers: {
-      ...getAuthHeaders(),
+      ...defaultHeaders,
       ...options.headers,
     },
   });
-  
-  // Manejar 401 Unauthorized
-  if (response.status === 401) {
-    console.log('❌ 401 Unauthorized recibido, intentando refresh...');
-    const refreshed = await refreshTokenIfNeeded();
-    
-    if (refreshed) {
-      // Retry la petición original con nuevo token
-      console.log('🔄 Reintentando petición con nuevo token...');
-      return fetch(url, {
-        ...options,
-        headers: {
-          ...getAuthHeaders(),
-          ...options.headers,
-        },
-      });
-    }
-  }
-  
-  return response;
 };
 
 // Servicio API para reportes
 const reportService = {
-  
-  // Generar reporte
-  async generateReport(fileId, reportConfig) {
-    const response = await fetch(`${API_BASE_URL}/reports/generate/`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
+  async generateReport(fileId, reportConfig = {}) {
+    try {
+      console.log('📊 Generando reporte para archivo:', fileId);
+      
+      const requestData = {
         file_id: fileId,
-        title: reportConfig.title,
-        description: reportConfig.description,
-        report_type: reportConfig.type,
-        generation_config: {
-          include_charts: reportConfig.includeCharts,
-          include_tables: reportConfig.includeTables,
-          include_recommendations: reportConfig.includeRecommendations,
-        },
-      }),
-    });
+        title: reportConfig.title || 'Reporte Automático',
+        description: reportConfig.description || '',
+        report_type: reportConfig.type || 'comprehensive'
+      };
+      
+      const response = await fetchWithAuth(`${API_BASE_URL}/reports/generate/`, {
+        method: 'POST',
+        body: JSON.stringify(requestData),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Error generando reporte');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error generando reporte');
+      }
+
+      const result = await response.json();
+      console.log('✅ Reporte generado:', result);
+      return result;
+      
+    } catch (error) {
+      console.error('❌ Error generando reporte:', error);
+      throw error;
     }
-
-    return response.json();
   },
 
   // Obtener reportes del usuario
-  async getReports(filters = {}) {
+  async getReports() {
     try {
-      const queryParams = new URLSearchParams();
+      console.log('📋 Obteniendo reportes...');
       
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value && value !== '') {
-          queryParams.append(key, value);
-        }
-      });
-
-      console.log('📋 Obteniendo reportes del backend...');
-      const response = await fetchWithAuth(`${API_BASE_URL}/reports/?${queryParams}`);
-
-      if (response.status === 404) {
-        console.warn('⚠️ Endpoint /reports/ no implementado');
-        return { results: [], count: 0 };  // Array vacío, no mock
-      }
-
+      const response = await fetchWithAuth(`${API_BASE_URL}/reports/`);
+      
       if (!response.ok) {
-        throw new Error('Error obteniendo reportes');
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
-
+      
       const data = await response.json();
-      console.log('✅ Reportes obtenidos del backend:', data);
+      console.log('✅ Reportes obtenidos:', data);
       return data;
+      
     } catch (error) {
       console.error('❌ Error obteniendo reportes:', error);
-      // Fallback vacío para evitar IDs mock problemáticos
-      return { results: [], count: 0 };
+      throw error;
     }
   },
 

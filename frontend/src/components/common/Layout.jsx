@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Toaster } from 'react-hot-toast';
+import DebugButton from '../debug/DebugButton';
 
 const navigation = [
   { name: 'Dashboard', href: '/app', icon: LayoutDashboard },
@@ -182,6 +183,7 @@ const Layout = () => {
           <Outlet />
         </main>
       </div>
+      <DebugButton />
     </div>
   );
 };

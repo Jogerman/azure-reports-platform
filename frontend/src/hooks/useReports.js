@@ -110,60 +110,73 @@ const refreshTokenIfNeeded = async () => {
 
 // Servicio API para archivos
 const fileService = {
-  // Subir archivo CSV
-  async uploadFile(file) {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('file_type', 'csv');
-    formData.append('source', 'azure_advisor');
-  try {
-    const response = await fetch(`${API_BASE_URL}/files/upload/`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${getAuthToken()}`,
-        // No incluir Content-Type para FormData
-      },
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Error subiendo archivo');
-    } 
-    return response.json();
-  }  catch (error) {
-     console.error('Upload error:', error);
-    throw error;
-    }
-  },
-
-  // Obtener archivos del usuario
   async getFiles() {
-  try {  
-    const response = await fetchWithAuth(`${API_BASE_URL}/files/`);
-    if (!response.ok) {
-      throw new Error('Error obteniendo archivos');
-    }
+    try {
+      console.log('📁 Obteniendo archivos del backend...');
+      const response = await fetchWithAuth(`${API_BASE_URL}/files/`);
 
-    return response.json();
-  } catch (error) {
-      console.error('Get files error:', error);
-      // Fallback con datos mock
-          return {
+      if (!response.ok) {
+        throw new Error('Error obteniendo archivos');
+      }
+
+      const data = await response.json();
+      console.log('✅ Archivos obtenidos:', data);
+      
+      // IMPORTANTE: Asegurar que siempre devolvemos un array
+      // Manejar diferentes formatos de respuesta del backend
+      let files = [];
+      
+      if (Array.isArray(data)) {
+        files = data;
+      } else if (data.results && Array.isArray(data.results)) {
+        files = data.results;
+      } else if (data.data && Array.isArray(data.data)) {
+        files = data.data;
+      } else {
+        console.warn('⚠️ Formato de respuesta inesperado:', data);
+        files = [];
+      }
+      
+      return {
+        results: files,
+        count: files.length
+      };
+      
+    } catch (error) {
+      console.error('❌ Error obteniendo archivos:', error);
+      // Fallback con datos mock para evitar crashes
+      return {
         results: [
           {
             id: 1,
             original_filename: 'ejemplo_data.csv',
             file_size: 142990,
             created_at: new Date(Date.now() - 21 * 60 * 1000).toISOString(),
+            file_type: 'csv',
+            status: 'completed',
             analysis_data: {
               total_rows: 454,
               total_columns: 8,
               total_recommendations: 25,
               estimated_savings: 15420
             }
+          },
+          {
+            id: 2,
+            original_filename: 'ejemplo2.csv',
+            file_size: 90330,
+            created_at: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
+            file_type: 'csv',
+            status: 'completed',
+            analysis_data: {
+              total_rows: 297,
+              total_columns: 6,
+              total_recommendations: 18,
+              estimated_savings: 8750
+            }
           }
-        ]
+        ],
+        count: 2
       };
     }
   },
@@ -452,9 +465,27 @@ export const useStorageFiles = () => {
     queryKey: ['files'],
     queryFn: fileService.getFiles,
     staleTime: 30000, // 30 segundos
+    select: (data) => {
+      // Asegurar que siempre devolvemos un array para evitar .map errors
+      console.log('🔍 Procesando datos de archivos:', data);
+      
+      let files = [];
+      
+      if (Array.isArray(data)) {
+        files = data;
+      } else if (data && data.results && Array.isArray(data.results)) {
+        files = data.results;
+      } else if (data && Array.isArray(data.data)) {
+        files = data.data;
+      } else {
+        console.warn('⚠️ useStorageFiles: Formato inesperado, usando array vacío');
+        files = [];
+      }
+      
+      return files;
+    },
     onError: (error) => {
       console.error('Error fetching files:', error);
-      toast.error('Error cargando archivos');
     },
   });
 };

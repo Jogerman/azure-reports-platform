@@ -1,11 +1,10 @@
 # apps/reports/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from . import views
+from .views import ReportViewSet
 
 router = DefaultRouter()
-router.register(r'csv-files', views.CSVFileViewSet, basename='csvfile')
-router.register(r'reports', views.ReportViewSet, basename='report')
+router.register(r'', ReportViewSet, basename='reports')
 
 urlpatterns = [
     path('', include(router.urls)),

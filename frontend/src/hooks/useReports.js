@@ -110,101 +110,103 @@ const refreshTokenIfNeeded = async () => {
 
 // Servicio API para archivos
 const fileService = {
-  async getFiles() {
+  async uploadFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    // Agregar metadatos opcionales
+    formData.append('file_type', 'csv');
+    formData.append('source', 'azure_advisor');
+
+    try {
+      console.log('📤 Iniciando upload de archivo:', file.name);
+      
+      const response = await fetchWithAuth(`${API_BASE_URL}/files/upload/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${getAuthToken()}`,
+          // NO agregar Content-Type para FormData - el browser lo hace automáticamente
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ 
+          detail: 'Error de conexión con el servidor' 
+        }));
+        throw new Error(error.detail || error.error || `Error ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Upload exitoso:', result);
+      
+      return result;
+    } catch (error) {
+      console.error('❌ Error en upload:', error);
+      throw error;
+    }
+  },
+
+ async getFiles() {
     try {
       console.log('📁 Obteniendo archivos del backend...');
       const response = await fetchWithAuth(`${API_BASE_URL}/files/`);
 
       if (!response.ok) {
-        throw new Error('Error obteniendo archivos');
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
-      console.log('✅ Archivos obtenidos:', data);
+      console.log('✅ Archivos obtenidos del backend:', data);
       
-      // IMPORTANTE: Asegurar que siempre devolvemos un array
-      // Manejar diferentes formatos de respuesta del backend
-      let files = [];
-      
-      if (Array.isArray(data)) {
-        files = data;
-      } else if (data.results && Array.isArray(data.results)) {
-        files = data.results;
-      } else if (data.data && Array.isArray(data.data)) {
-        files = data.data;
+      // Asegurar formato correcto
+      if (data && Array.isArray(data.results)) {
+        return data;
+      } else if (Array.isArray(data)) {
+        return { results: data, count: data.length };
       } else {
         console.warn('⚠️ Formato de respuesta inesperado:', data);
-        files = [];
+        return { results: [], count: 0 };
       }
       
-      return {
-        results: files,
-        count: files.length
-      };
-      
     } catch (error) {
-      console.error('❌ Error obteniendo archivos:', error);
-      // Fallback con datos mock para evitar crashes
+      console.error('❌ Error obteniendo archivos del backend:', error);
+      
+      // FALLBACK VACÍO - NO MOCK DATA para evitar IDs falsos
+      console.log('🔄 Retornando array vacío (sin mock data)');
       return {
-        results: [
-          {
-            id: 1,
-            original_filename: 'ejemplo_data.csv',
-            file_size: 142990,
-            created_at: new Date(Date.now() - 21 * 60 * 1000).toISOString(),
-            file_type: 'csv',
-            status: 'completed',
-            analysis_data: {
-              total_rows: 454,
-              total_columns: 8,
-              total_recommendations: 25,
-              estimated_savings: 15420
-            }
-          },
-          {
-            id: 2,
-            original_filename: 'ejemplo2.csv',
-            file_size: 90330,
-            created_at: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-            file_type: 'csv',
-            status: 'completed',
-            analysis_data: {
-              total_rows: 297,
-              total_columns: 6,
-              total_recommendations: 18,
-              estimated_savings: 8750
-            }
-          }
-        ],
-        count: 2
+        results: [],
+        count: 0
       };
     }
   },
   // Obtener archivo específico
   async getFile(fileId) {
-    const response = await fetchWithAuth(`${API_BASE_URL}/files/${fileId}/`, {
-      headers: getAuthHeaders(),
-    });
-
-    if (!response.ok) {
-      throw new Error('Error obteniendo archivo');
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/files/${fileId}/`);
+      if (!response.ok) {
+        throw new Error('Error obteniendo archivo');
+      }
+      return response.json();
+    } catch (error) {
+      console.error('Get file error:', error);
+      throw error;
     }
-
-    return response.json();
   },
 
-  // Eliminar archivo
   async deleteFile(fileId) {
-    const response = await fetchWithAuth(`${API_BASE_URL}/files/${fileId}/`, {
-      method: 'DELETE',
-      headers: getAuthHeaders(),
-    });
-
-    if (!response.ok) {
-      throw new Error('Error eliminando archivo');
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/files/${fileId}/`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        throw new Error('Error eliminando archivo');
+      }
+      return true;
+    } catch (error) {
+      console.error('Delete file error:', error);
+      throw error;
     }
-
-    return true;
   },
 };
 
@@ -288,12 +290,12 @@ const reportService = {
         }
       });
 
-      console.log('📋 Obteniendo reportes...');
+      console.log('📋 Obteniendo reportes del backend...');
       const response = await fetchWithAuth(`${API_BASE_URL}/reports/?${queryParams}`);
 
       if (response.status === 404) {
-        console.warn('⚠️ Endpoint /reports/ no implementado, usando mock');
-        return this.getMockReports(filters);
+        console.warn('⚠️ Endpoint /reports/ no implementado');
+        return { results: [], count: 0 };  // Array vacío, no mock
       }
 
       if (!response.ok) {
@@ -304,9 +306,19 @@ const reportService = {
       console.log('✅ Reportes obtenidos del backend:', data);
       return data;
     } catch (error) {
-      console.error('Get reports error:', error);
-      return this.getMockReports(filters);
+      console.error('❌ Error obteniendo reportes:', error);
+      // Fallback vacío para evitar IDs mock problemáticos
+      return { results: [], count: 0 };
     }
+  },
+
+  // Método getMockReports REMOVIDO o simplificado
+  getMockReports(filters = {}) {
+    // Retornar array vacío para evitar conflictos con IDs
+    return {
+      results: [],
+      count: 0
+    };
   },
 
   // Obtener reporte específico
@@ -442,12 +454,11 @@ export const useFileUpload = () => {
       queryClient.invalidateQueries(['files']);
       queryClient.invalidateQueries(['dashboard-stats']);
 
-      toast.success(`📁 ${file.name} subido y procesado exitosamente`);
+      console.log('📁 Upload completado exitosamente');
       
       return result;
     } catch (error) {
-      console.error('Error uploading file:', error);
-      toast.error(`❌ Error: ${error.message}`);
+      console.error('❌ Error en upload:', error);
       throw error;
     } finally {
       setIsUploading(false);
@@ -458,34 +469,27 @@ export const useFileUpload = () => {
 
   return { uploadFile, isUploading, progress };
 };
-
 // Hook para obtener archivos
+
 export const useStorageFiles = () => {
   return useQuery({
     queryKey: ['files'],
     queryFn: fileService.getFiles,
-    staleTime: 30000, // 30 segundos
+    staleTime: 30000,
     select: (data) => {
-      // Asegurar que siempre devolvemos un array para evitar .map errors
-      console.log('🔍 Procesando datos de archivos:', data);
+      console.log('🔍 useStorageFiles - Procesando datos:', data);
       
-      let files = [];
-      
-      if (Array.isArray(data)) {
-        files = data;
-      } else if (data && data.results && Array.isArray(data.results)) {
-        files = data.results;
-      } else if (data && Array.isArray(data.data)) {
-        files = data.data;
+      if (data && Array.isArray(data.results)) {
+        return data.results;
+      } else if (Array.isArray(data)) {
+        return data;
       } else {
         console.warn('⚠️ useStorageFiles: Formato inesperado, usando array vacío');
-        files = [];
+        return [];
       }
-      
-      return files;
     },
     onError: (error) => {
-      console.error('Error fetching files:', error);
+      console.error('❌ Error en useStorageFiles:', error);
     },
   });
 };

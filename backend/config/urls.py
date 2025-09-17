@@ -19,16 +19,13 @@ def health_check(request):
 urlpatterns = [
     # Admin
     path('admin/', admin.site.urls),
-    
     # API endpoints - CORREGIDOS SEGÚN TU ESTRUCTURA
     path('api/auth/', include('apps.authentication.urls')),
     path('api/reports/', include('apps.reports.urls')), 
     path('api/files/', include('apps.storage.urls')),  
-    path('api/dashboard/', include('apps.analytics.urls')), 
-    
+    path('api/dashboard/', include('apps.analytics.urls')),     
     # Health check
-    path('api/health/', health_check),
-    
+    path('api/health/', lambda request: JsonResponse({'status': 'ok'})),
     # API root
     path('api/', include(router.urls)),
 ]

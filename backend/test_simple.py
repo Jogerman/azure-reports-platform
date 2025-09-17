@@ -9,8 +9,8 @@ from time import sleep
 
 # Configuración
 API_BASE = 'http://localhost:8000/api'
-TEST_USER_EMAIL = 'test@example.com'
-TEST_USER_PASSWORD = 'testpass123'
+TEST_USER_EMAIL = 'jogerman.17@gmail.com'
+TEST_USER_PASSWORD = 'Epo1052@!A**'
 
 class Colors:
     GREEN = '\033[92m'

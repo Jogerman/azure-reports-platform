@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from rest_framework.views import exception_handler
 from rest_framework import status
 from django.db import IntegrityError
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 

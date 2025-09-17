@@ -1,4 +1,5 @@
-# apps/reports/views.py
+# apps/reports/views.py - VERSIÓN FINAL CORREGIDA
+
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -27,24 +28,45 @@ class ReportViewSet(ModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        """FIX: Aplicar ordering ANTES que limit para evitar el error"""
-        queryset = Report.objects.filter(user=self.request.user)
+        """Queryset base sin filtros externos"""
+        return Report.objects.filter(user=self.request.user)
+    
+    def filter_queryset(self, queryset):
+        """CRITICAL FIX: Override completo del filter_queryset para controlar orden de operaciones"""
         
-        # 1. Primero aplicar ordering
+        # 1. Partir del queryset base
+        filtered_queryset = queryset
+        
+        # 2. Aplicar ordering PRIMERO
         ordering = self.request.query_params.get('ordering', '-created_at')
         if ordering:
-            queryset = queryset.order_by(ordering)
+            filtered_queryset = filtered_queryset.order_by(ordering)
         
-        # 2. DESPUÉS aplicar limit (slice)
+        # 3. Aplicar otros filtros manuales (búsqueda, etc.)
+        search = self.request.query_params.get('search')
+        if search:
+            filtered_queryset = filtered_queryset.filter(
+                title__icontains=search
+            )
+        
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            filtered_queryset = filtered_queryset.filter(status=status_filter)
+        
+        report_type_filter = self.request.query_params.get('report_type')
+        if report_type_filter:
+            filtered_queryset = filtered_queryset.filter(report_type=report_type_filter)
+        
+        # 4. Aplicar limit AL FINAL (slice)
         limit = self.request.query_params.get('limit')
         if limit:
             try:
                 limit = int(limit)
-                queryset = queryset[:limit]
+                filtered_queryset = filtered_queryset[:limit]
             except (ValueError, TypeError):
-                pass  # Ignorar límites inválidos
-                
-        return queryset
+                pass
+        
+        return filtered_queryset
     
     def perform_create(self, serializer):
         """Asegurar que el reporte se asigne al usuario actual"""
@@ -52,7 +74,7 @@ class ReportViewSet(ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def generate(self, request):
-        """FIX: Generar reporte asegurando relación con csv_file"""
+        """Generar reporte asegurando relación con csv_file"""
         try:
             file_id = request.data.get('file_id')
             
@@ -66,10 +88,10 @@ class ReportViewSet(ModelViewSet):
                 logger.error(f"CSV file no encontrado: {file_id}, error: {e}")
                 return Response({'error': 'Archivo no encontrado'}, status=404)
             
-            # FIX: Crear reporte CON relación obligatoria a csv_file
+            # Crear reporte con relación a csv_file
             report_data = {
                 'user': request.user,
-                'csv_file': csv_file,  # ← CRÍTICO: Asignar csv_file
+                'csv_file': csv_file,
                 'title': request.data.get('title', f'Análisis - {csv_file.original_filename}'),
                 'description': request.data.get('description', ''),
                 'report_type': request.data.get('report_type', 'comprehensive'),
@@ -126,7 +148,7 @@ class ReportViewSet(ModelViewSet):
                     <h1>Reporte: {report.title}</h1>
                     <p>Estado: {report.status}</p>
                     <p>Archivo: {report.csv_file.original_filename if report.csv_file else 'N/A'}</p>
-                    <p>Error: No se pudo cargar el template completo</p>
+                    <p>Creado: {report.created_at}</p>
                 </body>
             </html>
             """

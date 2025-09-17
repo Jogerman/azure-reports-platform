@@ -1,15 +1,14 @@
-// src/hooks/useReports.js - VERSIÓN CORREGIDA CON BACKEND REAL
-import { useState, useEffect } from 'react';
+// frontend/src/hooks/useReports.js - VERSIÓN COMPLETAMENTE CORREGIDA
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 
-// Import configuración de API
+// Configuración de API
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api';
 
 const getAuthToken = () => {
   return localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
 };
-
 
 // Helper para headers con autenticación
 const getAuthHeaders = () => {
@@ -22,9 +21,6 @@ const getAuthHeaders = () => {
   
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
-    console.log('🔑 Header Authorization agregado');
-  } else {
-    console.warn('⚠️ No se encontró token de autenticación');
   }
   
   return headers;
@@ -88,102 +84,6 @@ const refreshTokenIfNeeded = async () => {
   }
 };
 
-
-// Servicio API para archivos
-const fileService = {
-  async uploadFile(file) {
-    // ✅ CORRECTO: Crear FormData apropiadamente
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    try {
-      console.log('📤 Subiendo archivo:', {
-        name: file.name,
-        size: file.size,
-        type: file.type
-      });
-      
-      // ✅ CRÍTICO: NO incluir Content-Type, FormData lo maneja automáticamente
-      const response = await fetchWithAuth(`${API_BASE_URL}/files/upload/`, {
-        method: 'POST',
-        body: formData,  // ← Solo FormData, sin headers adicionales
-      });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error('❌ Error response:', errorData);
-        
-        let errorMessage = 'Error al subir archivo';
-        try {
-          const errorJson = JSON.parse(errorData);
-          errorMessage = errorJson.error || errorMessage;
-        } catch (e) {
-          // Si no es JSON, usar el texto plano
-          errorMessage = errorData || errorMessage;
-        }
-        
-        throw new Error(errorMessage);
-      }
-
-      const result = await response.json();
-      console.log('✅ Archivo subido exitosamente:', result);
-      return result;
-      
-    } catch (error) {
-      console.error('❌ Error en upload:', error);
-      throw error;
-    }
-  },
-
- async getFiles() {
-    try {
-      console.log('📂 Obteniendo lista de archivos...');
-      
-      const response = await fetchWithAuth(`${API_BASE_URL}/files/`);
-      
-      if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      console.log('✅ Archivos obtenidos:', data);
-      return data;
-      
-    } catch (error) {
-      console.error('❌ Error obteniendo archivos:', error);
-      throw error;
-    }
-  } 
-  },
-  // Obtener archivo específico
-  async getFile(fileId) {
-    try {
-      const response = await fetchWithAuth(`${API_BASE_URL}/files/${fileId}/`);
-      if (!response.ok) {
-        throw new Error('Error obteniendo archivo');
-      }
-      return response.json();
-    } catch (error) {
-      console.error('Get file error:', error);
-      throw error;
-    }
-  },
-
-  async deleteFile(fileId) {
-    try {
-      const response = await fetchWithAuth(`${API_BASE_URL}/files/${fileId}/`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) {
-        throw new Error('Error eliminando archivo');
-      }
-      return true;
-    } catch (error) {
-      console.error('Delete file error:', error);
-      throw error;
-    }
-  }
-};
 const fetchWithAuth = async (url, options = {}) => {
   let token = getAuthToken();
   
@@ -211,6 +111,70 @@ const fetchWithAuth = async (url, options = {}) => {
       ...options.headers,
     },
   });
+};
+
+// Servicio API para archivos
+const fileService = {
+  async uploadFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      console.log('📤 Subiendo archivo:', {
+        name: file.name,
+        size: file.size,
+        type: file.type
+      });
+      
+      const response = await fetchWithAuth(`${API_BASE_URL}/files/upload/`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('❌ Error response:', errorData);
+        
+        let errorMessage = 'Error al subir archivo';
+        try {
+          const errorJson = JSON.parse(errorData);
+          errorMessage = errorJson.error || errorMessage;
+        } catch (e) {
+          errorMessage = errorData || errorMessage;
+        }
+        
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+      console.log('✅ Archivo subido exitosamente:', result);
+      return result;
+      
+    } catch (error) {
+      console.error('❌ Error en upload:', error);
+      throw error;
+    }
+  },
+
+  async getFiles() {
+    try {
+      console.log('📂 Obteniendo lista de archivos...');
+      
+      const response = await fetchWithAuth(`${API_BASE_URL}/files/`);
+      
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('✅ Archivos obtenidos:', data);
+      return data;
+      
+    } catch (error) {
+      console.error('❌ Error obteniendo archivos:', error);
+      throw error;
+    }
+  }
 };
 
 // Servicio API para reportes
@@ -246,12 +210,17 @@ const reportService = {
     }
   },
 
-  // Obtener reportes del usuario
-  async getReports() {
+  async getReports(filters = {}) {
     try {
       console.log('📋 Obteniendo reportes...');
       
-      const response = await fetchWithAuth(`${API_BASE_URL}/reports/`);
+      // Construir query params
+      const params = new URLSearchParams();
+      if (filters.limit) params.append('limit', filters.limit);
+      if (filters.ordering) params.append('ordering', filters.ordering);
+      
+      const url = `${API_BASE_URL}/reports/${params.toString() ? '?' + params.toString() : ''}`;
+      const response = await fetchWithAuth(url);
       
       if (!response.ok) {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
@@ -267,20 +236,8 @@ const reportService = {
     }
   },
 
-  // Método getMockReports REMOVIDO o simplificado
-  getMockReports(filters = {}) {
-    // Retornar array vacío para evitar conflictos con IDs
-    return {
-      results: [],
-      count: 0
-    };
-  },
-
-  // Obtener reporte específico
   async getReport(reportId) {
-    const response = await fetch(`${API_BASE_URL}/reports/${reportId}/`, {
-      headers: getAuthHeaders(),
-    });
+    const response = await fetchWithAuth(`${API_BASE_URL}/reports/${reportId}/`);
 
     if (!response.ok) {
       throw new Error('Error obteniendo reporte');
@@ -289,24 +246,18 @@ const reportService = {
     return response.json();
   },
 
-  // Obtener HTML del reporte para visualización
   async getReportHTML(reportId) {
-    const response = await fetch(`${API_BASE_URL}/reports/${reportId}/html/`, {
-      headers: getAuthHeaders(),
-    });
+    const response = await fetchWithAuth(`${API_BASE_URL}/reports/${reportId}/html/`);
 
     if (!response.ok) {
       throw new Error('Error obteniendo HTML del reporte');
     }
 
-    return response.text(); // Retorna HTML como texto
+    return response.text();
   },
 
-  // Descargar reporte en PDF
   async downloadReportPDF(reportId, filename) {
-    const response = await fetch(`${API_BASE_URL}/reports/${reportId}/download/`, {
-      headers: getAuthHeaders(),
-    });
+    const response = await fetchWithAuth(`${API_BASE_URL}/reports/${reportId}/download/`);
 
     if (!response.ok) {
       throw new Error('Error descargando reporte');
@@ -323,11 +274,9 @@ const reportService = {
     window.URL.revokeObjectURL(url);
   },
 
-  // Eliminar reporte
   async deleteReport(reportId) {
-    const response = await fetch(`${API_BASE_URL}/reports/${reportId}/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/reports/${reportId}/`, {
       method: 'DELETE',
-      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -377,8 +326,7 @@ const dashboardService = {
   }
 };
 
-
-// HOOKS CORREGIDOS
+// HOOKS EXPORTADOS
 
 // Hook para subir archivos
 export const useFileUpload = () => {
@@ -400,96 +348,61 @@ export const useFileUpload = () => {
       }, 200);
 
       const result = await fileService.uploadFile(file);
-
-      // Completar progreso
+      
       clearInterval(progressInterval);
       setProgress(100);
-
-      // Invalidar consultas para refrescar la lista
-      queryClient.invalidateQueries(['files']);
-      queryClient.invalidateQueries(['dashboard-stats']);
-
-      console.log('📁 Upload completado exitosamente');
       
+      // Invalidar cache de archivos
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      
+      toast.success('Archivo subido exitosamente');
       return result;
+      
     } catch (error) {
-      console.error('❌ Error en upload:', error);
+      setProgress(0);
+      toast.error(error.message || 'Error al subir archivo');
       throw error;
     } finally {
       setIsUploading(false);
-      // Resetear progreso después de un delay
       setTimeout(() => setProgress(0), 1000);
     }
   };
 
-  return { uploadFile, isUploading, progress };
+  return {
+    uploadFile,
+    isUploading,
+    progress
+  };
 };
-// Hook para obtener archivos
 
-export const useStorageFiles = () => {
+// Hook para obtener archivos
+export const useFiles = () => {
   return useQuery({
     queryKey: ['files'],
     queryFn: fileService.getFiles,
     staleTime: 30000,
-    select: (data) => {
-      console.log('🔍 useStorageFiles - Procesando datos:', data);
-      
-      if (data && Array.isArray(data.results)) {
-        return data.results;
-      } else if (Array.isArray(data)) {
-        return data;
-      } else {
-        console.warn('⚠️ useStorageFiles: Formato inesperado, usando array vacío');
-        return [];
-      }
-    },
     onError: (error) => {
-      console.error('❌ Error en useStorageFiles:', error);
+      console.error('Error fetching files:', error);
+      toast.error('Error cargando archivos');
     },
   });
 };
 
 // Hook para generar reportes
-export const useReportGeneration = () => {
-  const [isGenerating, setIsGenerating] = useState(false);
+export const useGenerateReport = () => {
   const queryClient = useQueryClient();
-
-  const generateReport = async (fileId, reportConfig) => {
-    setIsGenerating(true);
-
-    try {
-      toast.loading('🔄 Analizando datos y generando reporte...', { id: 'generating' });
-
-      const report = await reportService.generateReport(fileId, reportConfig);
-
-      // Invalidar consultas para refrescar listas
-      queryClient.invalidateQueries(['reports']);
-      queryClient.invalidateQueries(['recent-reports']);
-      queryClient.invalidateQueries(['dashboard-stats']);
-
-      toast.success(
-        `🎉 Reporte "${report.title}" generado exitosamente`, 
-        { id: 'generating' }
-      );
-
-      // Mostrar estadísticas del reporte si están disponibles
-      if (report.analysis_summary) {
-        toast.success(
-          `📊 ${report.analysis_summary.total_recommendations || 0} recomendaciones incluidas`
-        );
-      }
-
-      return report;
-    } catch (error) {
+  
+  return useMutation({
+    mutationFn: ({ fileId, reportConfig }) => reportService.generateReport(fileId, reportConfig),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
+      toast.success('Reporte generado exitosamente');
+    },
+    onError: (error) => {
       console.error('Error generating report:', error);
-      toast.error(`❌ Error: ${error.message}`, { id: 'generating' });
-      throw error;
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  return { generateReport, isGenerating };
+      toast.error(error.message || 'Error generando reporte');
+    },
+  });
 };
 
 // Hook para obtener reportes
@@ -536,104 +449,11 @@ export const useReportHTML = (reportId) => {
     queryKey: ['report-html', reportId],
     queryFn: () => reportService.getReportHTML(reportId),
     enabled: !!reportId,
-    staleTime: 300000, // 5 minutos
     onError: (error) => {
       console.error('Error fetching report HTML:', error);
-      toast.error('Error cargando visualización del reporte');
     },
   });
 };
 
-// Hook para mutaciones de reportes
-export const useReportMutations = () => {
-  const queryClient = useQueryClient();
-
-  const deleteReport = useMutation({
-    mutationFn: reportService.deleteReport,
-    onSuccess: () => {
-      queryClient.invalidateQueries(['reports']);
-      queryClient.invalidateQueries(['recent-reports']);
-      queryClient.invalidateQueries(['dashboard-stats']);
-      toast.success('Reporte eliminado exitosamente');
-    },
-    onError: (error) => {
-      toast.error(`Error eliminando reporte: ${error.message}`);
-    },
-  });
-
-  const downloadReport = useMutation({
-    mutationFn: ({ reportId, filename }) => 
-      reportService.downloadReportPDF(reportId, filename),
-    onSuccess: () => {
-      toast.success('📥 Descarga iniciada');
-    },
-    onError: (error) => {
-      toast.error(`Error descargando reporte: ${error.message}`);
-    },
-  });
-
-  return {
-    deleteReport,
-    downloadReport,
-  };
-};
-
-// Hook para mutaciones de archivos
-export const useFileMutations = () => {
-  const queryClient = useQueryClient();
-
-  const deleteFile = useMutation({
-    mutationFn: fileService.deleteFile,
-    onSuccess: () => {
-      queryClient.invalidateQueries(['files']);
-      queryClient.invalidateQueries(['dashboard-stats']);
-      toast.success('Archivo eliminado exitosamente');
-    },
-    onError: (error) => {
-      toast.error(`Error eliminando archivo: ${error.message}`);
-    },
-  });
-
-  return {
-    deleteFile,
-  };
-};
-
-// Hook para actividad reciente (mock temporal hasta implementar en backend)
-export const useRecentActivity = (limit = 5) => {
-  const [data, setData] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    setIsLoading(true);
-    // Simular carga de actividad reciente
-    setTimeout(() => {
-      setData([
-        {
-          id: 'activity-1',
-          description: 'Archivo procesado: ejemplo_data.csv (454 filas)',
-          timestamp: new Date(Date.now() - 21 * 60 * 1000).toISOString(),
-          type: 'file_processed'
-        },
-        {
-          id: 'activity-2', 
-          description: 'Reporte generado: Análisis Completo - ejemplo 2.csv',
-          timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-          type: 'report_generated'
-        },
-        {
-          id: 'activity-3',
-          description: 'Archivo procesado: ejemplo2.csv (297 filas)', 
-          timestamp: new Date(Date.now() - 65 * 60 * 1000).toISOString(),
-          type: 'file_processed'
-        }
-      ].slice(0, limit));
-      setIsLoading(false);
-    }, 300);
-  }, [limit]);
-
-  return { data, isLoading };
-};
-
-// Export del servicio para uso directo si es necesario
+// Exportar servicios también para uso directo
 export { fileService, reportService, dashboardService };

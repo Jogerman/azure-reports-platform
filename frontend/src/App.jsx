@@ -1,4 +1,4 @@
-// src/App.jsx
+// src/App.jsx - VERSIÓN CON RUTA DE REPORTVIEW
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -9,6 +9,7 @@ import { AuthProvider } from './context/AuthContext';
 import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import Reports from './pages/Reports';
+import ReportView from './pages/ReportView'; 
 import History from './pages/History';
 import Storage from './pages/Storage';
 import Settings from './pages/Settings';
@@ -51,6 +52,7 @@ function App() {
               }>
                 <Route index element={<Dashboard />} />
                 <Route path="reports" element={<Reports />} />
+                <Route path="reports/:id" element={<ReportView />} /> {/* ✅ NUEVA RUTA */}
                 <Route path="history" element={<History />} />
                 <Route path="storage" element={<Storage />} />
                 <Route path="settings" element={<Settings />} />

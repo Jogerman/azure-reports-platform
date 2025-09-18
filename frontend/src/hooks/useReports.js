@@ -1,107 +1,20 @@
-// frontend/src/hooks/useReports.js - VERSIÓN FINAL COMPLETA
-
+// src/hooks/useReports.js - VERSIÓN DE PRODUCCIÓN LIMPIA
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 
-// Configuración de API
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api';
+// Configuración de la API
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
-const getAuthToken = () => {
-  return localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
-};
-
-// Helper para headers con autenticación
-const getAuthHeaders = () => {
-  const token = getAuthToken();
-  
-  const headers = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-  };
-  
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  
-  return headers;
-};
-
-const isTokenValid = (token) => {
-  if (!token) return false;
-  
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    const now = Date.now() / 1000;
-    return payload.exp > now;
-  } catch (error) {
-    console.error('Error verificando token:', error);
-    return false;
-  }
-};
-
-const refreshTokenIfNeeded = async () => {
-  const refreshToken = localStorage.getItem('refresh_token') || 
-                      sessionStorage.getItem('refresh_token');
-  
-  if (!refreshToken) {
-    console.warn('⚠️ No hay refresh token, redirigiendo al login');
-    localStorage.clear();
-    sessionStorage.clear();
-    window.location.href = '/';
-    return false;
-  }
-  
-  try {
-    console.log('🔄 Intentando refrescar token...');
-    const response = await fetch(`${API_BASE_URL}/auth/refresh/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        refresh: refreshToken
-      }),
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      localStorage.setItem('access_token', data.access);
-      console.log('✅ Token refrescado exitosamente');
-      return true;
-    } else {
-      console.error('❌ Error refrescando token');
-      localStorage.clear();
-      sessionStorage.clear();
-      window.location.href = '/';
-      return false;
-    }
-  } catch (error) {
-    console.error('❌ Error en refresh:', error);
-    localStorage.clear();
-    sessionStorage.clear();
-    window.location.href = '/';
-    return false;
-  }
-};
-
-const fetchWithAuth = async (url, options = {}) => {
-  let token = getAuthToken();
-  
-  if (!isTokenValid(token)) {
-    const refreshed = await refreshTokenIfNeeded();
-    if (!refreshed) {
-      throw new Error('No se pudo autenticar');
-    }
-    token = getAuthToken();
-  }
-  
+// Función auxiliar para fetch con autenticación
+const fetchWithAuth = (url, options = {}) => {
+  const token = localStorage.getItem('token');
   const defaultHeaders = {
-    'Authorization': `Bearer ${token}`,
+    'Authorization': token ? `Bearer ${token}` : '',
   };
-  
-  // FIX: NO agregar Content-Type para FormData
-  if (!options.body || !(options.body instanceof FormData)) {
+
+  // Solo agregar Content-Type si no es FormData
+  if (!(options.body instanceof FormData)) {
     defaultHeaders['Content-Type'] = 'application/json';
   }
   
@@ -114,18 +27,14 @@ const fetchWithAuth = async (url, options = {}) => {
   });
 };
 
-// Servicio API para archivos
+// 📁 SERVICIO DE ARCHIVOS
 const fileService = {
   async uploadFile(file) {
     const formData = new FormData();
     formData.append('file', file);
     
     try {
-      console.log('📤 Subiendo archivo:', {
-        name: file.name,
-        size: file.size,
-        type: file.type
-      });
+      console.log('📤 Subiendo archivo:', file.name);
       
       const response = await fetchWithAuth(`${API_BASE_URL}/files/upload/`, {
         method: 'POST',
@@ -134,8 +43,6 @@ const fileService = {
 
       if (!response.ok) {
         const errorData = await response.text();
-        console.error('❌ Error response:', errorData);
-        
         let errorMessage = 'Error al subir archivo';
         try {
           const errorJson = JSON.parse(errorData);
@@ -143,12 +50,11 @@ const fileService = {
         } catch (e) {
           errorMessage = errorData || errorMessage;
         }
-        
         throw new Error(errorMessage);
       }
 
       const result = await response.json();
-      console.log('✅ Archivo subido exitosamente:', result);
+      console.log('✅ Archivo subido:', result);
       return result;
       
     } catch (error) {
@@ -159,7 +65,7 @@ const fileService = {
 
   async getFiles() {
     try {
-      console.log('📂 Obteniendo lista de archivos...');
+      console.log('📂 Obteniendo archivos...');
       
       const response = await fetchWithAuth(`${API_BASE_URL}/files/`);
       
@@ -178,7 +84,7 @@ const fileService = {
   }
 };
 
-// Servicio API para reportes
+// 📊 SERVICIO DE REPORTES
 const reportService = {
   async generateReport(fileId, reportConfig = {}) {
     try {
@@ -215,7 +121,6 @@ const reportService = {
     try {
       console.log('📋 Obteniendo reportes...');
       
-      // Construir query params
       const params = new URLSearchParams();
       if (filters.limit) params.append('limit', filters.limit);
       if (filters.ordering) params.append('ordering', filters.ordering);
@@ -239,27 +144,22 @@ const reportService = {
 
   async getReport(reportId) {
     const response = await fetchWithAuth(`${API_BASE_URL}/reports/${reportId}/`);
-
     if (!response.ok) {
       throw new Error('Error obteniendo reporte');
     }
-
     return response.json();
   },
 
   async getReportHTML(reportId) {
     const response = await fetchWithAuth(`${API_BASE_URL}/reports/${reportId}/html/`);
-
     if (!response.ok) {
       throw new Error('Error obteniendo HTML del reporte');
     }
-
     return response.text();
   },
 
   async downloadReportPDF(reportId, filename) {
     const response = await fetchWithAuth(`${API_BASE_URL}/reports/${reportId}/download/`);
-
     if (!response.ok) {
       throw new Error('Error descargando reporte');
     }
@@ -279,24 +179,22 @@ const reportService = {
     const response = await fetchWithAuth(`${API_BASE_URL}/reports/${reportId}/`, {
       method: 'DELETE',
     });
-
     if (!response.ok) {
       throw new Error('Error eliminando reporte');
     }
-
     return true;
   },
 };
 
-// Servicio para estadísticas del dashboard
+// 📈 SERVICIO DE DASHBOARD
 const dashboardService = {
   async getStats() {
     try {
-      console.log('📊 Obteniendo stats del dashboard...');
+      console.log('📊 Obteniendo stats...');
       const response = await fetchWithAuth(`${API_BASE_URL}/dashboard/stats/`);
 
       if (response.status === 404) {
-        console.warn('⚠️ Endpoint /dashboard/stats/ no implementado, usando mock');
+        console.warn('⚠️ Endpoint /dashboard/stats/ no implementado');
         return this.getMockStats();
       }
 
@@ -305,29 +203,28 @@ const dashboardService = {
       }
 
       const data = await response.json();
-      console.log('✅ Stats obtenidas del backend:', data);
+      console.log('✅ Stats obtenidas:', data);
       return data;
     } catch (error) {
-      console.error('Get dashboard stats error:', error);
+      console.error('Error obteniendo stats:', error);
       return this.getMockStats();
     }
   },
 
   getMockStats() {
-    console.log('📊 Usando stats mock');
     return {
-      total_files: 2,
-      total_reports: 1,
-      completed_reports: 1,
-      total_recommendations: 25,
-      potential_savings: 15420,
+      total_files: 0,
+      total_reports: 0,
+      completed_reports: 0,
+      total_recommendations: 0,
+      potential_savings: 0,
       success_rate: 100,
       last_updated: new Date().toISOString()
     };
   }
 };
 
-// HOOKS EXPORTADOS
+// 🎣 HOOKS EXPORTADOS (SOLO PRODUCCIÓN)
 
 // Hook para subir archivos
 export const useFileUpload = () => {
@@ -340,7 +237,7 @@ export const useFileUpload = () => {
     setProgress(0);
 
     try {
-      // Simular progreso mientras se sube
+      // Simular progreso
       const progressInterval = setInterval(() => {
         setProgress(prev => {
           const newProgress = prev + Math.random() * 15;
@@ -353,7 +250,7 @@ export const useFileUpload = () => {
       clearInterval(progressInterval);
       setProgress(100);
       
-      // Invalidar cache de archivos
+      // Invalidar cache
       queryClient.invalidateQueries({ queryKey: ['files'] });
       
       toast.success('Archivo subido exitosamente');
@@ -369,14 +266,10 @@ export const useFileUpload = () => {
     }
   };
 
-  return {
-    uploadFile,
-    isUploading,
-    progress
-  };
+  return { uploadFile, isUploading, progress };
 };
 
-// Hook para obtener archivos
+// Hook para obtener archivos (ALIAS PARA COMPATIBILIDAD)
 export const useFiles = () => {
   return useQuery({
     queryKey: ['files'],
@@ -388,6 +281,9 @@ export const useFiles = () => {
     },
   });
 };
+
+// Hook alias para mantener compatibilidad con Storage.jsx
+export const useStorageFiles = useFiles;
 
 // Hook para generar reportes
 export const useGenerateReport = () => {
@@ -404,6 +300,18 @@ export const useGenerateReport = () => {
       toast.error(error.message || 'Error generando reporte');
     },
   });
+};
+
+// Hook wrapper para compatibilidad con Reports.jsx
+export const useReportGeneration = () => {
+  const mutation = useGenerateReport();
+  
+  return {
+    generateReport: async (fileId, reportConfig) => {
+      return mutation.mutateAsync({ fileId, reportConfig });
+    },
+    isGenerating: mutation.isLoading
+  };
 };
 
 // Hook para obtener reportes
@@ -437,7 +345,7 @@ export const useDashboardStats = () => {
   return useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: dashboardService.getStats,
-    staleTime: 60000, // 1 minuto
+    staleTime: 60000,
     onError: (error) => {
       console.error('Error fetching dashboard stats:', error);
     },
@@ -456,13 +364,12 @@ export const useReportHTML = (reportId) => {
   });
 };
 
-// NEW: Hook para actividad reciente
+// Hook para actividad reciente (REQUERIDO POR DASHBOARD)
 export const useRecentActivity = (limit = 8) => {
   return useQuery({
     queryKey: ['recent-activity', limit],
     queryFn: async () => {
       try {
-        // Intentar obtener actividad desde el backend
         const response = await fetchWithAuth(`${API_BASE_URL}/dashboard/activity/`);
         
         if (response.status === 404) {
@@ -482,14 +389,46 @@ export const useRecentActivity = (limit = 8) => {
         return getMockActivity(limit);
       }
     },
-    staleTime: 60000, // 1 minuto
+    staleTime: 60000,
     onError: (error) => {
       console.error('Error fetching recent activity:', error);
     },
   });
 };
 
-// NEW: Hook para mutaciones de reportes (FALTABA)
+// Función auxiliar para actividad mock
+const getMockActivity = (limit) => {
+  const activities = [
+    {
+      id: 1,
+      description: 'Archivo CSV procesado exitosamente',
+      timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 min ago
+      type: 'file_processed'
+    },
+    {
+      id: 2,
+      description: 'Reporte de seguridad generado',
+      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), // 2 hours ago
+      type: 'report_generated'
+    },
+    {
+      id: 3,
+      description: 'Análisis de costos completado',
+      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(), // 5 hours ago
+      type: 'analysis_completed'
+    },
+    {
+      id: 4,
+      description: 'Sistema actualizado',
+      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), // 1 day ago
+      type: 'system_update'
+    }
+  ];
+  
+  return activities.slice(0, limit);
+};
+
+// Hook para mutaciones de reportes
 export const useReportMutations = () => {
   const queryClient = useQueryClient();
 
@@ -508,7 +447,6 @@ export const useReportMutations = () => {
     mutationFn: (reportId) => reportService.deleteReport(reportId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reports'] });
-      queryClient.invalidateQueries({ queryKey: ['recent-reports'] });
       toast.success('Reporte eliminado exitosamente');
     },
     onError: (error) => {
@@ -517,83 +455,5 @@ export const useReportMutations = () => {
     },
   });
 
-  return {
-    downloadReport,
-    deleteReport
-  };
+  return { downloadReport, deleteReport };
 };
-
-// Función helper para mock de actividad
-const getMockActivity = (limit = 8) => {
-  const activities = [
-    {
-      id: 1,
-      type: 'file_upload',
-      description: 'Archivo CSV subido: azure_advisor_report.csv',
-      timestamp: new Date(Date.now() - 5 * 60 * 1000).toISOString(), // 5 min ago
-      icon: 'upload',
-      status: 'completed'
-    },
-    {
-      id: 2,
-      type: 'report_generation',
-      description: 'Reporte "Análisis Q3 2024" generado exitosamente',
-      timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(), // 15 min ago
-      icon: 'file-text',
-      status: 'completed'
-    },
-    {
-      id: 3,
-      type: 'user_login',
-      description: 'Inicio de sesión desde nueva ubicación',
-      timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(), // 30 min ago
-      icon: 'user',
-      status: 'info'
-    },
-    {
-      id: 4,
-      type: 'analysis_complete',
-      description: 'Análisis de seguridad completado para 245 recursos',
-      timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
-      icon: 'shield',
-      status: 'completed'
-    },
-    {
-      id: 5,
-      type: 'recommendation',
-      description: 'Nueva recomendación de ahorro detectada: $1,240/mes',
-      timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(), // 4 hours ago
-      icon: 'trending-up',
-      status: 'warning'
-    },
-    {
-      id: 6,
-      type: 'report_download',
-      description: 'Reporte "Optimización Costos" descargado',
-      timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(), // 6 hours ago
-      icon: 'download',
-      status: 'completed'
-    },
-    {
-      id: 7,
-      type: 'file_processing',
-      description: 'Procesamiento de archivo completado: 1,847 recomendaciones',
-      timestamp: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
-      icon: 'activity',
-      status: 'completed'
-    },
-    {
-      id: 8,
-      type: 'alert',
-      description: 'Alerta: Recursos sin optimizar detectados',
-      timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
-      icon: 'alert-triangle',
-      status: 'warning'
-    }
-  ];
-
-  return activities.slice(0, limit);
-};
-
-// Exportar servicios también para uso directo
-export { fileService, reportService, dashboardService };

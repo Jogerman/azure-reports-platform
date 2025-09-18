@@ -1,10 +1,9 @@
-// src/pages/Reports.jsx - VERSIÓN COMPLETA Y FUNCIONAL
+// src/pages/Reports.jsx - VERSIÓN CON DEBUG MEJORADO
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
   FileText, 
   Upload, 
-  Plus,
   BarChart3,
   RefreshCw,
   Zap,
@@ -12,15 +11,17 @@ import {
   Shield,
   DollarSign,
   Database,
-  Settings
+  Settings,
+  AlertCircle
 } from 'lucide-react';
+
 import { 
-  useStorageFiles, 
-  useRecentReports, 
-  useReportGeneration 
+  useFiles,
+  useRecentReports,
+  useReportGeneration
 } from '../hooks/useReports';
+
 import FileUpload from '../components/reports/FileUpload';
-import ReportsList from '../components/reports/ReportsList';
 import Loading from '../components/common/Loading';
 import { formatFileSize, formatRelativeTime } from '../utils/helpers';
 import toast from 'react-hot-toast';
@@ -37,12 +38,24 @@ const Reports = () => {
     includeRecommendations: true
   });
 
-  // Hooks para datos
-  const { data: files, isLoading: filesLoading, refetch: refetchFiles } = useStorageFiles();
+  // Hooks con debug
+  const { data: files, isLoading: filesLoading, refetch: refetchFiles, error: filesError } = useFiles();
   const { data: recentReports, isLoading: reportsLoading, refetch: refetchReports } = useRecentReports(3);
   const { generateReport, isGenerating } = useReportGeneration();
 
-  // Tipos de reportes disponibles
+  // Debug en consola
+  React.useEffect(() => {
+    console.log('🔍 Debug Reports - Estado actual:', {
+      files: files,
+      filesCount: files?.length || 0,
+      filesLoading,
+      filesError,
+      selectedFile,
+      recentReports,
+      reportsLoading
+    });
+  }, [files, filesLoading, filesError, selectedFile, recentReports, reportsLoading]);
+
   const reportTypes = [
     { value: 'comprehensive', label: 'Análisis Completo', icon: BarChart3, description: 'Análisis detallado con todas las métricas' },
     { value: 'security', label: 'Análisis de Seguridad', icon: Shield, description: 'Enfoque en vulnerabilidades y seguridad' },
@@ -51,43 +64,60 @@ const Reports = () => {
     { value: 'trend', label: 'Análisis de Tendencias', icon: TrendingUp, description: 'Patrones y proyecciones futuras' }
   ];
 
-  // Manejadores de eventos
   const handleUploadComplete = (uploadedFiles) => {
-    setShowUpload(false);
-    refetchFiles();
-    toast.success(`${uploadedFiles.length} archivo(s) subido(s) y procesado(s) exitosamente`);
+    console.log('📤 Upload completado, archivos recibidos:', uploadedFiles);
     
-    // Si solo se subió un archivo, seleccionarlo automáticamente
-    if (uploadedFiles.length === 1) {
-      const uploadedFile = uploadedFiles[0];
-      setSelectedFile(uploadedFile);
+    setShowUpload(false);
+    
+    // Refrescar lista de archivos
+    console.log('🔄 Refrescando lista de archivos...');
+    refetchFiles();
+    
+    toast.success(`${uploadedFiles.length} archivo(s) subido(s) exitosamente`);
+    
+    // Auto-seleccionar primer archivo
+    if (uploadedFiles.length > 0) {
+      const firstFile = uploadedFiles[0];
+      console.log('🎯 Auto-seleccionando archivo:', firstFile);
+      
+      setSelectedFile(firstFile);
       setReportConfig(prev => ({
         ...prev,
-        title: `Análisis Completo - ${uploadedFile.original_filename}`
+        title: `Análisis de ${firstFile.original_filename || firstFile.filename}`,
+        description: `Reporte automático para ${firstFile.original_filename || firstFile.filename}`
       }));
-      
-      // Scroll al generador de reportes
-      setTimeout(() => {
-        document.getElementById('report-generator')?.scrollIntoView({ behavior: 'smooth' });
-      }, 1000);
     }
+  };
+
+  const handleFileSelect = (file) => {
+    console.log('📋 Archivo seleccionado:', file);
+    setSelectedFile(file);
+    setReportConfig(prev => ({
+      ...prev,
+      title: `Análisis de ${file.original_filename || file.filename}`,
+      description: `Reporte automático para ${file.original_filename || file.filename}`
+    }));
   };
 
   const handleGenerateReport = async () => {
     if (!selectedFile) {
-      toast.error('Selecciona un archivo CSV primero');
+      toast.error('Selecciona un archivo primero');
       return;
     }
 
-    if (!reportConfig.title.trim()) {
-      toast.error('Ingresa un título para el reporte');
-      return;
-    }
+    console.log('🚀 Generando reporte:', {
+      fileId: selectedFile.id,
+      reportConfig
+    });
 
     try {
-      const report = await generateReport(selectedFile.id, reportConfig);
+      const result = await generateReport(selectedFile.id, reportConfig);
+      console.log('✅ Reporte generado exitosamente:', result);
       
-      // Resetear formulario después del éxito
+      // Refrescar reportes
+      refetchReports();
+      
+      // Limpiar formulario
       setSelectedFile(null);
       setReportConfig({
         title: '',
@@ -98,427 +128,295 @@ const Reports = () => {
         includeRecommendations: true
       });
       
-      // Refrescar reportes recientes
-      refetchReports();
-      
-      // Opcional: redirigir al historial después de un delay
-      setTimeout(() => {
-        if (window.confirm('¿Quieres ir al historial para ver tu nuevo reporte?')) {
-          window.location.href = '/app/history';
-        }
-      }, 2000);
+      // ✅ REDIRECCIÓN CORREGIDA: Ahora sí existe la ruta
+      if (result.id) {
+        toast.success('¡Reporte generado exitosamente! Redirigiendo...', { duration: 2000 });
+        
+        setTimeout(() => {
+          // Usar navigate en lugar de window.location para mejor UX
+          window.location.href = `/app/reports/${result.id}`;
+        }, 1000);
+      }
       
     } catch (error) {
-      console.error('Error generando reporte:', error);
-      toast.error('Error al generar el reporte. Intenta nuevamente.');
+      console.error('❌ Error generando reporte:', error);
+      toast.error(`Error generando reporte: ${error.message}`);
     }
   };
 
-  const handleFileSelect = (file) => {
-    setSelectedFile(file);
-    
-    // Auto-completar título si está vacío
-    if (!reportConfig.title.trim()) {
-      setReportConfig(prev => ({
-        ...prev,
-        title: `Análisis ${reportTypes.find(t => t.value === reportConfig.type)?.label} - ${file.original_filename}`
-      }));
-    }
-  };
-
-  const handleTypeChange = (newType) => {
-    setReportConfig(prev => ({ ...prev, type: newType }));
-    
-    // Actualizar título si hay archivo seleccionado
-    if (selectedFile && reportConfig.title.includes('Análisis')) {
-      const typeLabel = reportTypes.find(t => t.value === newType)?.label;
-      setReportConfig(prev => ({
-        ...prev,
-        title: `Análisis ${typeLabel} - ${selectedFile.original_filename}`
-      }));
-    }
-  };
-
-  const getFileMetrics = (file) => {
-    if (!file.analysis_data) return null;
-    
-    return {
-      rows: file.analysis_data.total_rows || 0,
-      columns: file.analysis_data.total_columns || 0,
-      recommendations: file.analysis_data.total_recommendations || 0,
-      savings: file.analysis_data.estimated_savings || 0
-    };
+  const handleRefreshFiles = () => {
+    console.log('🔄 Refrescando archivos manualmente...');
+    refetchFiles();
+    toast.info('Actualizando lista de archivos...');
   };
 
   if (filesLoading) {
-    return <Loading message="Cargando archivos disponibles..." />;
+    return <Loading />;
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Generar Reportes</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Generador de Reportes</h1>
           <p className="text-gray-600 mt-1">
-            Crea reportes detallados a partir de tus archivos CSV analizados
+            Sube archivos CSV y genera reportes inteligentes con IA
           </p>
         </div>
-        
-        <div className="flex items-center space-x-3">
+        <button
+          onClick={() => setShowUpload(true)}
+          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <Upload className="w-4 h-4" />
+          Subir Archivo
+        </button>
+      </div>
+
+      {/* Debug Panel (solo en desarrollo) */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <h3 className="font-medium text-yellow-800 mb-2">🔍 Debug Info</h3>
+          <div className="text-sm space-y-1">
+            <div>📁 Archivos cargados: {files?.length || 0}</div>
+            <div>🔄 Cargando archivos: {filesLoading ? 'Sí' : 'No'}</div>
+            <div>❌ Error archivos: {filesError ? filesError.message : 'No'}</div>
+            <div>📋 Archivo seleccionado: {selectedFile ? selectedFile.original_filename : 'Ninguno'}</div>
+            <div>📊 Reportes recientes: {recentReports?.length || 0}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Error de archivos */}
+      {filesError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-red-500" />
+            <h3 className="font-medium text-red-800">Error cargando archivos</h3>
+          </div>
+          <p className="text-red-700 mt-1">{filesError.message}</p>
           <button
-            onClick={() => refetchFiles()}
-            className="btn-secondary flex items-center"
+            onClick={handleRefreshFiles}
+            className="mt-2 text-red-600 hover:text-red-800 underline"
           >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Actualizar
-          </button>
-          <button
-            onClick={() => setShowUpload(true)}
-            className="btn-primary flex items-center"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Subir Archivo
+            Intentar de nuevo
           </button>
         </div>
-      </div>
-
-      {/* Reportes recientes */}
-      {recentReports && recentReports.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-xl shadow-soft border border-gray-200 p-6"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900 flex items-center">
-              <FileText className="w-5 h-5 mr-2 text-purple-600" />
-              Reportes Recientes
-            </h2>
-            <a 
-              href="/app/history" 
-              className="text-sm text-purple-600 hover:text-purple-700 font-medium"
-            >
-              Ver todos →
-            </a>
-          </div>
-          
-          {reportsLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-            </div>
-          ) : (
-            <ReportsList reports={recentReports} showActions={false} />
-          )}
-        </motion.div>
       )}
 
-      {/* Generador de reportes */}
-      <div id="report-generator" className="grid lg:grid-cols-2 gap-8">
-        {/* Selección de archivo */}
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="bg-white rounded-xl shadow-soft border border-gray-200 p-6"
-        >
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <Database className="w-5 h-5 mr-2 text-blue-600" />
-            Seleccionar Archivo
-          </h3>
-          
-          {!files || files.length === 0 ? (
-            <div className="text-center py-8">
-              <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500 mb-4">No hay archivos CSV disponibles</p>
+      {/* Modal de subida */}
+      {showUpload && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Subir Archivo CSV</h2>
               <button
-                onClick={() => setShowUpload(true)}
-                className="btn-primary flex items-center mx-auto"
+                onClick={() => setShowUpload(false)}
+                className="text-gray-500 hover:text-gray-700"
               >
-                <Plus className="w-4 h-4 mr-2" />
-                Subir Primer Archivo
+                ✕
               </button>
             </div>
-          ) : (
-            <div className="space-y-3 max-h-96 overflow-y-auto">
-              {files.map((file) => {
-                const metrics = getFileMetrics(file);
-                const isSelected = selectedFile?.id === file.id;
-                
-                return (
-                  <div
-                    key={file.id}
-                    onClick={() => handleFileSelect(file)}
-                    className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                      isSelected 
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-medium text-gray-900 truncate">
-                        {file.original_filename}
-                      </h4>
-                      <span className="text-xs text-gray-500">
-                        {formatFileSize(file.file_size)}
-                      </span>
-                    </div>
-                    
-                    <div className="text-xs text-gray-500 mb-3">
-                      Subido {formatRelativeTime(file.created_at)}
-                    </div>
-                    
-                    {metrics && (
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div className="text-center">
-                          <div className="font-semibold text-blue-600">
-                            {metrics.rows.toLocaleString()}
-                          </div>
-                          <div className="text-xs text-gray-500">Filas</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="font-semibold text-purple-600">
-                            {metrics.columns}
-                          </div>
-                          <div className="text-xs text-gray-500">Columnas</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="font-semibold text-orange-600">
-                            {metrics.recommendations}
-                          </div>
-                          <div className="text-xs text-gray-500">Recomendaciones</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="font-semibold text-green-600">
-                            ${Math.round(metrics.savings)}
-                          </div>
-                          <div className="text-xs text-gray-500">Ahorros Est.</div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </motion.div>
+            <FileUpload onUploadComplete={handleUploadComplete} />
+          </div>
+        </div>
+      )}
 
-        {/* Configuración del reporte */}
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="bg-white rounded-xl shadow-soft border border-gray-200 p-6"
-        >
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <Settings className="w-5 h-5 mr-2 text-purple-600" />
-            Configuración del Reporte
-          </h3>
-          
-          <div className="space-y-6">
-            {/* Tipo de reporte */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                Tipo de Análisis
-              </label>
-              <div className="grid grid-cols-1 gap-2">
-                {reportTypes.map((type) => {
-                  const Icon = type.icon;
-                  return (
-                    <label
-                      key={type.value}
-                      className={`flex items-center p-3 border rounded-lg cursor-pointer transition-all ${
-                        reportConfig.type === type.value
-                          ? 'border-primary-500 bg-primary-50'
-                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="reportType"
-                        value={type.value}
-                        checked={reportConfig.type === type.value}
-                        onChange={(e) => handleTypeChange(e.target.value)}
-                        className="sr-only"
-                      />
-                      <Icon className={`w-4 h-4 mr-3 ${
-                        reportConfig.type === type.value ? 'text-primary-600' : 'text-gray-400'
-                      }`} />
-                      <div className="flex-1">
-                        <div className="text-sm font-medium text-gray-700">
-                          {type.label}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {type.description}
-                        </div>
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Panel de archivos */}
+        <div className="lg:col-span-2">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <Database className="w-5 h-5" />
+                Archivos Disponibles ({files?.length || 0})
+              </h2>
+              <button
+                onClick={handleRefreshFiles}
+                className="text-blue-600 hover:text-blue-700 flex items-center gap-1"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Actualizar
+              </button>
             </div>
 
-            {/* Título del reporte */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Título del Reporte *
-              </label>
-              <input
-                type="text"
-                value={reportConfig.title}
-                onChange={(e) => setReportConfig(prev => ({ ...prev, title: e.target.value }))}
-                placeholder="Ej: Análisis de Seguridad - Datos Q3 2024"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              />
-            </div>
-
-            {/* Descripción opcional */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Descripción (Opcional)
-              </label>
-              <textarea
-                value={reportConfig.description}
-                onChange={(e) => setReportConfig(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="Descripción breve del propósito del reporte..."
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              />
-            </div>
-
-            {/* Opciones de contenido */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                Contenido del Reporte
-              </label>
+            {files && files.length > 0 ? (
               <div className="space-y-3">
-                <label className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={reportConfig.includeCharts}
-                    onChange={(e) => setReportConfig(prev => ({ ...prev, includeCharts: e.target.checked }))}
-                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                  />
-                  <div>
-                    <span className="text-sm font-medium text-gray-700">Incluir visualizaciones</span>
-                    <p className="text-xs text-gray-500">Gráficos de barras, tortas y tendencias</p>
-                  </div>
-                </label>
-                
-                <label className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={reportConfig.includeTables}
-                    onChange={(e) => setReportConfig(prev => ({ ...prev, includeTables: e.target.checked }))}
-                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                  />
-                  <div>
-                    <span className="text-sm font-medium text-gray-700">Incluir tablas detalladas</span>
-                    <p className="text-xs text-gray-500">Tablas con datos específicos y métricas</p>
-                  </div>
-                </label>
-                
-                <label className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={reportConfig.includeRecommendations}
-                    onChange={(e) => setReportConfig(prev => ({ ...prev, includeRecommendations: e.target.checked }))}
-                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                  />
-                  <div>
-                    <span className="text-sm font-medium text-gray-700">Incluir recomendaciones de acción</span>
-                    <p className="text-xs text-gray-500">Pasos específicos para implementar mejoras</p>
-                  </div>
-                </label>
+                {files.map((file) => (
+                  <motion.div
+                    key={file.id}
+                    whileHover={{ scale: 1.02 }}
+                    className={`p-4 border rounded-lg cursor-pointer transition-all ${
+                      selectedFile?.id === file.id
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                    onClick={() => handleFileSelect(file)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <FileText className="w-8 h-8 text-blue-500" />
+                        <div>
+                          <h3 className="font-medium text-gray-900">
+                            {file.original_filename || file.filename || 'Archivo sin nombre'}
+                          </h3>
+                          <p className="text-sm text-gray-500">
+                            {formatFileSize(file.file_size || file.size || 0)} • {(file.rows_count || 0).toLocaleString()} filas
+                          </p>
+                          {process.env.NODE_ENV === 'development' && (
+                            <p className="text-xs text-gray-400">ID: {file.id}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm text-gray-500">
+                          {formatRelativeTime(file.upload_date || file.created_at)}
+                        </p>
+                        {selectedFile?.id === file.id && (
+                          <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded mt-1">
+                            Seleccionado
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
               </div>
+            ) : (
+              <div className="text-center py-8">
+                <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-500">No hay archivos disponibles</p>
+                <button
+                  onClick={() => setShowUpload(true)}
+                  className="text-blue-600 hover:text-blue-700 mt-2"
+                >
+                  Sube tu primer archivo
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Panel de configuración */}
+        <div className="space-y-6">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Settings className="w-5 h-5" />
+              Configuración
+            </h2>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Título del Reporte
+                </label>
+                <input
+                  type="text"
+                  value={reportConfig.title}
+                  onChange={(e) => setReportConfig(prev => ({ ...prev, title: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Ej: Análisis de Rendimiento Q4"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Descripción
+                </label>
+                <textarea
+                  value={reportConfig.description}
+                  onChange={(e) => setReportConfig(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  rows={3}
+                  placeholder="Descripción del análisis..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Tipo de Análisis
+                </label>
+                <div className="space-y-2">
+                  {reportTypes.map((type) => {
+                    const IconComponent = type.icon;
+                    return (
+                      <label
+                        key={type.value}
+                        className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                          reportConfig.type === type.value
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="reportType"
+                          value={type.value}
+                          checked={reportConfig.type === type.value}
+                          onChange={(e) => setReportConfig(prev => ({ ...prev, type: e.target.value }))}
+                          className="sr-only"
+                        />
+                        <IconComponent className="w-5 h-5 text-blue-500" />
+                        <div>
+                          <div className="font-medium text-gray-900">{type.label}</div>
+                          <div className="text-sm text-gray-500">{type.description}</div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                onClick={handleGenerateReport}
+                disabled={!selectedFile || isGenerating}
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 px-4 rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+              >
+                {isGenerating ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Generando...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4" />
+                    Generar Reporte
+                  </>
+                )}
+              </button>
             </div>
           </div>
 
-          {/* Vista previa de configuración */}
-          {selectedFile && (
-            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-              <h4 className="font-medium text-gray-900 mb-3 flex items-center">
-                <Settings className="w-4 h-4 mr-2 text-purple-600" />
-                Vista Previa
-              </h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Archivo:</span>
-                  <span className="font-medium truncate max-w-48">
-                    {selectedFile.original_filename}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Tipo:</span>
-                  <span className="font-medium">
-                    {reportTypes.find(t => t.value === reportConfig.type)?.label}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Gráficos:</span>
-                  <span className={reportConfig.includeCharts ? 'text-green-600' : 'text-gray-400'}>
-                    {reportConfig.includeCharts ? '✅ Incluidos' : '❌ No incluidos'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Tablas:</span>
-                  <span className={reportConfig.includeTables ? 'text-green-600' : 'text-gray-400'}>
-                    {reportConfig.includeTables ? '✅ Incluidas' : '❌ No incluidas'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Recomendaciones:</span>
-                  <span className={reportConfig.includeRecommendations ? 'text-green-600' : 'text-gray-400'}>
-                    {reportConfig.includeRecommendations ? '✅ Incluidas' : '❌ No incluidas'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Reportes recientes */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <BarChart3 className="w-5 h-5" />
+              Reportes Recientes
+            </h2>
 
-          {/* Progreso de generación */}
-          {isGenerating && (
-            <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="flex items-center space-x-3">
-                <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                <div>
-                  <p className="text-sm font-medium text-blue-900">Generando reporte...</p>
-                  <p className="text-xs text-blue-700">Procesando análisis y creando visualizaciones</p>
-                </div>
+            {reportsLoading ? (
+              <div className="text-center py-4">
+                <RefreshCw className="w-6 h-6 animate-spin text-gray-400 mx-auto" />
               </div>
-              <div className="mt-3 w-full bg-blue-200 rounded-full h-2">
-                <div className="bg-blue-600 h-2 rounded-full animate-pulse" style={{width: '60%'}}></div>
+            ) : recentReports && recentReports.length > 0 ? (
+              <div className="space-y-3">
+                {recentReports.map((report) => (
+                  <div key={report.id} className="p-3 border border-gray-200 rounded-lg">
+                    <h3 className="font-medium text-gray-900 text-sm">{report.title}</h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {formatRelativeTime(report.created_at)}
+                    </p>
+                  </div>
+                ))}
               </div>
-            </div>
-          )}
-
-          {/* Botón de generar */}
-          <button
-            onClick={handleGenerateReport}
-            disabled={!selectedFile || !reportConfig.title.trim() || isGenerating}
-            className="w-full mt-6 btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center py-3 text-lg font-semibold"
-          >
-            {isGenerating ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                Generando...
-              </>
             ) : (
-              <>
-                <BarChart3 className="w-5 h-5 mr-2" />
-                Generar Reporte
-              </>
+              <p className="text-sm text-gray-500 text-center py-4">
+                No hay reportes recientes
+              </p>
             )}
-          </button>
-        </motion.div>
+          </div>
+        </div>
       </div>
-
-      {/* Modal de subida de archivos */}
-      {showUpload && (
-        <FileUpload
-          onClose={() => setShowUpload(false)}
-          onUploadComplete={handleUploadComplete}
-          accept=".csv"
-        />
-      )}
     </div>
   );
 };

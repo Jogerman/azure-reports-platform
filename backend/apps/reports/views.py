@@ -128,27 +128,121 @@ class ReportViewSet(ModelViewSet):
                 status=500
             )
     
+   
+
     def generate_report_html(self, report):
-        """Generar HTML del reporte"""
-        context = {
-            'report': report,
-            'csv_file': report.csv_file,
-            'analysis_data': report.csv_file.analysis_data if report.csv_file else {},
-            'generated_at': datetime.now(),
-        }
-        
+        """Generar HTML del reporte con diseño profesional"""
         try:
-            html_content = render_to_string('reports/report_template.html', context)
-            return html_content
+            # Obtener datos del análisis del CSV
+            analysis_data = {}
+            if report.csv_file and hasattr(report.csv_file, 'analysis_data'):
+                analysis_data = report.csv_file.analysis_data or {}
+            
+            # NUEVO: Usar generador HTML profesional
+            try:
+                from ..storage.services.enhanced_html_generator import generate_professional_azure_html
+                
+                # Extraer nombre del cliente (puedes configurarlo como necesites)
+                client_name = getattr(report, 'client_name', 'CONTOSO')
+                filename = report.csv_file.original_filename if report.csv_file else ""
+                
+                # Generar HTML profesional con análisis completo
+                html_content = generate_professional_azure_html(
+                    analysis_data=analysis_data,
+                    client_name=client_name,
+                    filename=filename
+                )
+                
+                logger.info(f"✅ HTML profesional generado exitosamente para reporte {report.id}")
+                return html_content
+                
+            except ImportError:
+                logger.warning("Generador HTML profesional no disponible, usando básico")
+                return self.generate_basic_html(report, analysis_data)
+            
+            except Exception as e:
+                logger.error(f"Error generando HTML profesional: {e}, usando básico")
+                return self.generate_basic_html(report, analysis_data)
+        
         except Exception as e:
-            logger.error(f"Error renderizando template: {e}")
-            return f"""
-            <html>
-                <body>
-                    <h1>Reporte: {report.title}</h1>
-                    <p>Estado: {report.status}</p>
-                    <p>Archivo: {report.csv_file.original_filename if report.csv_file else 'N/A'}</p>
-                    <p>Creado: {report.created_at}</p>
-                </body>
-            </html>
-            """
+            logger.error(f"Error generando HTML para reporte {report.id}: {str(e)}")
+            return self.generate_error_html(report, str(e))
+
+    def generate_basic_html(self, report, analysis_data):
+        """Generar HTML básico como fallback"""
+        executive = analysis_data.get('executive_summary', {})
+        
+        return f"""
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <title>Azure Advisor Report - {report.title}</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }}
+                .header {{ background: #0066CC; color: white; padding: 30px; text-align: center; border-radius: 8px; }}
+                .metrics {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 30px 0; }}
+                .metric-card {{ background: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center; border-left: 4px solid #0066CC; }}
+                .metric-value {{ font-size: 2rem; font-weight: bold; color: #0066CC; }}
+                .metric-label {{ color: #666; margin-top: 5px; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>Azure Advisor Analysis Report</h1>
+                <h2>{report.title}</h2>
+                <p>Generated on {timezone.now().strftime('%B %d, %Y')}</p>
+            </div>
+            
+            <div class="metrics">
+                <div class="metric-card">
+                    <div class="metric-value">${executive.get('monthly_savings', 0):,.0f}</div>
+                    <div class="metric-label">Monthly Savings</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">{executive.get('total_actions', 0)}</div>
+                    <div class="metric-label">Total Recommendations</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">{executive.get('working_hours_estimate', 0)}</div>
+                    <div class="metric-label">Estimated Hours</div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 40px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+                <h3>Report Summary</h3>
+                <p>This report analyzes your Azure Advisor recommendations and provides actionable insights for optimization.</p>
+                <p><strong>File analyzed:</strong> {report.csv_file.original_filename if report.csv_file else 'N/A'}</p>
+                <p><strong>Status:</strong> {report.get_status_display()}</p>
+            </div>
+            
+            <div style="text-align: center; margin-top: 40px; color: #666; border-top: 1px solid #ddd; padding-top: 20px;">
+                <p>Generated by Azure Reports Platform | {timezone.now().strftime('%Y-%m-%d %H:%M')}</p>
+            </div>
+        </body>
+        </html>
+        """
+
+    def generate_error_html(self, report, error_message):
+        """Generar HTML de error"""
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Error - Azure Report</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 40px; }}
+                .error {{ background: #fee; border: 1px solid #fcc; padding: 20px; border-radius: 8px; }}
+            </style>
+        </head>
+        <body>
+            <h1>Azure Advisor Report - {report.title}</h1>
+            <div class="error">
+                <h3>Error generating detailed report</h3>
+                <p>Report ID: {report.id}</p>
+                <p>Error: {error_message}</p>
+            </div>
+            <p>Please contact support if this error persists.</p>
+        </body>
+        </html>
+        """

@@ -26,6 +26,10 @@ class ReportSerializer(serializers.ModelSerializer):
 class ReportViewSet(ModelViewSet):
     serializer_class = ReportSerializer
     permission_classes = [IsAuthenticated]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.logger = logging.getLogger(__name__) 
     
     def get_queryset(self):
         """Queryset base sin filtros externos"""

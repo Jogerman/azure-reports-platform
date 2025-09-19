@@ -14,6 +14,7 @@ class EnhancedAzureAdvisorAnalyzer:
     
     def __init__(self, csv_data, filename=""):
         self.df = csv_data
+        self.logger = logging.getLogger(__name__)
         self.filename = filename
         self.total_rows = len(csv_data)
         

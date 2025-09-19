@@ -62,7 +62,7 @@ class ProfessionalAzureHTMLGenerator:
     <body>
         {self._generate_header()}
         {self._generate_executive_summary(executive)}
-        {self._generate_azure_optimization_section_simple(executive)}
+        {self._generate_azure_optimization_section(executive)}
         {self._generate_cost_optimization_section(cost_opt)}
         {self._generate_reliability_section(reliability)}
         {self._generate_operational_excellence_section(operational)}

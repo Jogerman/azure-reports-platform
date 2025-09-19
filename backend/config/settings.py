@@ -1,8 +1,15 @@
 # config/settings.py
-import os
+import os, sys
 from pathlib import Path
 from datetime import timedelta
 from decouple import config
+
+
+# Configuración de encoding para Windows
+if sys.platform.startswith('win'):
+    # Configurar encoding UTF-8 para Windows
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -287,6 +294,7 @@ LOGGING = {
             'maxBytes': 1024*1024*5,  # 5MB
             'backupCount': 3,
             'formatter': 'verbose',
+            'encoding': 'utf-8',
         },
         'console': {
             'level': 'DEBUG' if DEBUG else 'INFO',

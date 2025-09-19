@@ -133,43 +133,28 @@ class ReportViewSet(ModelViewSet):
     def generate_report_html(self, report):
         """Generar HTML del reporte con diseño profesional"""
         try:
-            # Obtener datos del análisis del CSV
-            analysis_data = {}
-            if report.csv_file and hasattr(report.csv_file, 'analysis_data'):
-                analysis_data = report.csv_file.analysis_data or {}
-                print(f"🔍 DEBUG: Analysis data completo:")
-                print(f"🔍 Executive summary: {analysis_data.get('executive_summary', {})}")
-                print(f"🔍 Cost optimization: {analysis_data.get('cost_optimization', {})}")
-    
-            # NUEVO: Usar generador HTML profesional
-            try:
-                from ..storage.services.enhanced_html_generator import generate_professional_azure_html
-                
-                # Extraer nombre del cliente (puedes configurarlo como necesites)
-                client_name = getattr(report, 'client_name', 'CONTOSO')
-                filename = report.csv_file.original_filename if report.csv_file else ""
-                
-                # Generar HTML profesional con análisis completo
-                html_content = generate_professional_azure_html(
-                    analysis_data=analysis_data,
-                    client_name=client_name,
-                    filename=filename
-                )
-                
-                logger.info(f"✅ HTML profesional generado exitosamente para reporte {report.id}")
-                return html_content
-                
-            except ImportError:
-                logger.warning("Generador HTML profesional no disponible, usando básico")
-                return self.generate_basic_html(report, analysis_data)
+            self.logger.info(f"Generando HTML para reporte {report.id}")
             
-            except Exception as e:
-                logger.error(f"Error generando HTML profesional: {e}, usando básico")
-                return self.generate_basic_html(report, analysis_data)
-        
+            # Obtener datos del CSV file asociado
+            csv_file = report.csv_file
+            if not csv_file or not csv_file.analysis_data:
+                self.logger.warning(f"No hay datos de análisis para el reporte {report.id}")
+                return self._generate_basic_html(report)
+            
+            analysis_data = csv_file.analysis_data
+            self.logger.debug(f"Analysis data completo:")
+            self.logger.debug(f"Executive summary: {analysis_data.get('executive_summary', {})}")
+            self.logger.debug(f"Cost optimization: {analysis_data.get('cost_optimization', {})}")
+            
+            # Generar HTML profesional
+            html_content = self._generate_professional_html(report, analysis_data)
+            
+            self.logger.info(f"HTML profesional generado exitosamente para reporte {report.id}")
+            return html_content
+            
         except Exception as e:
-            logger.error(f"Error generando HTML para reporte {report.id}: {str(e)}")
-            return self.generate_error_html(report, str(e))
+            self.logger.error(f"Error generando HTML para reporte {report.id}: {str(e)}")
+            return self._generate_basic_html(report)
 
     def generate_basic_html(self, report, analysis_data):
         """Generar HTML básico como fallback"""

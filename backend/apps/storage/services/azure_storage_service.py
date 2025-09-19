@@ -18,21 +18,19 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class AzureStorageService:
-    """Servicio para manejo de Azure Blob Storage"""
-    
     def __init__(self):
         self.account_name = getattr(settings, 'AZURE_STORAGE_ACCOUNT_NAME', None)
         self.account_key = getattr(settings, 'AZURE_STORAGE_ACCOUNT_KEY', None)
         self.container_name = getattr(settings, 'AZURE_STORAGE_CONTAINER_NAME', 'azure-reports')
         
-        # Log de configuración (sin mostrar keys completas)
-        logger.info(f"🔧 Configurando Azure Storage:")
+        # Log de configuración - SIN EMOJIS
+        logger.info(f"Configurando Azure Storage:")
         logger.info(f"   Account: {self.account_name}")
         logger.info(f"   Container: {self.container_name}")
-        logger.info(f"   Key: {'✅ Configurado' if self.account_key else '❌ No configurado'}")
+        logger.info(f"   Key: {'Configurado' if self.account_key else 'No configurado'}")
         
         if not AZURE_AVAILABLE:
-            logger.warning("❌ Azure SDK no disponible. Instalar con: pip install azure-storage-blob azure-identity")
+            logger.warning("Azure SDK no disponible. Instalar con: pip install azure-storage-blob azure-identity")
             self.blob_service_client = None
             return
             
@@ -41,12 +39,12 @@ class AzureStorageService:
             try:
                 connection_string = f"DefaultEndpointsProtocol=https;AccountName={self.account_name};AccountKey={self.account_key};EndpointSuffix=core.windows.net"
                 self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-                logger.info("✅ Cliente de Azure Storage inicializado exitosamente")
+                logger.info("Cliente de Azure Storage inicializado exitosamente")
             except Exception as e:
-                logger.error(f"❌ Error inicializando cliente de Azure Storage: {str(e)}")
+                logger.error(f"Error inicializando cliente de Azure Storage: {str(e)}")
                 self.blob_service_client = None
         else:
-            logger.warning("❌ Credenciales de Azure Storage no configuradas")
+            logger.warning("Credenciales de Azure Storage no configuradas")
             self.blob_service_client = None
 
 

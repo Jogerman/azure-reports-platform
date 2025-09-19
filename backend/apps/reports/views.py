@@ -137,7 +137,10 @@ class ReportViewSet(ModelViewSet):
             analysis_data = {}
             if report.csv_file and hasattr(report.csv_file, 'analysis_data'):
                 analysis_data = report.csv_file.analysis_data or {}
-            
+                print(f"🔍 DEBUG: Analysis data completo:")
+                print(f"🔍 Executive summary: {analysis_data.get('executive_summary', {})}")
+                print(f"🔍 Cost optimization: {analysis_data.get('cost_optimization', {})}")
+    
             # NUEVO: Usar generador HTML profesional
             try:
                 from ..storage.services.enhanced_html_generator import generate_professional_azure_html

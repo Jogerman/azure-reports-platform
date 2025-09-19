@@ -202,11 +202,21 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-# Azure settings
+# Azure Blob Storage Settings
 USE_AZURE_STORAGE = config('USE_AZURE_STORAGE', default=False, cast=bool)
-AZURE_ACCOUNT_NAME = config('AZURE_STORAGE_ACCOUNT_NAME', default='')
-AZURE_ACCOUNT_KEY = config('AZURE_STORAGE_ACCOUNT_KEY', default='')
-AZURE_CONTAINER = config('AZURE_STORAGE_CONTAINER', default='reports')
+
+if USE_AZURE_STORAGE:
+    # Azure Storage configuration
+    AZURE_STORAGE_ACCOUNT_NAME = config('AZURE_STORAGE_ACCOUNT_NAME', default='')
+    AZURE_STORAGE_ACCOUNT_KEY = config('AZURE_STORAGE_ACCOUNT_KEY', default='')
+    AZURE_STORAGE_CONTAINER_NAME = config('AZURE_STORAGE_CONTAINER_NAME', default='reports')
+    
+    # Verificar que las credenciales estén configuradas
+    if not AZURE_STORAGE_ACCOUNT_NAME or not AZURE_STORAGE_ACCOUNT_KEY:
+        print("⚠️ ADVERTENCIA: Credenciales de Azure Storage no configuradas")
+        USE_AZURE_STORAGE = False
+else:
+    print("💾 Usando almacenamiento local (archivos en media/)")
 
 # Microsoft Authentication
 MICROSOFT_AUTH_CLIENT_ID = config('MICROSOFT_AUTH_CLIENT_ID', default='')

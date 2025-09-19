@@ -21,27 +21,34 @@ class AzureStorageService:
     """Servicio para manejo de Azure Blob Storage"""
     
     def __init__(self):
-        if not AZURE_AVAILABLE:
-            logger.warning("Azure Storage SDK no disponible")
-            return
-            
         self.account_name = getattr(settings, 'AZURE_STORAGE_ACCOUNT_NAME', None)
         self.account_key = getattr(settings, 'AZURE_STORAGE_ACCOUNT_KEY', None)
         self.container_name = getattr(settings, 'AZURE_STORAGE_CONTAINER_NAME', 'azure-reports')
         
+        # Log de configuración (sin mostrar keys completas)
+        logger.info(f"🔧 Configurando Azure Storage:")
+        logger.info(f"   Account: {self.account_name}")
+        logger.info(f"   Container: {self.container_name}")
+        logger.info(f"   Key: {'✅ Configurado' if self.account_key else '❌ No configurado'}")
+        
+        if not AZURE_AVAILABLE:
+            logger.warning("❌ Azure SDK no disponible. Instalar con: pip install azure-storage-blob azure-identity")
+            self.blob_service_client = None
+            return
+            
         # Inicializar cliente
         if self.account_name and self.account_key:
-            connection_string = f"DefaultEndpointsProtocol=https;AccountName={self.account_name};AccountKey={self.account_key};EndpointSuffix=core.windows.net"
-            self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-        else:
-            # Usar credenciales por defecto si no hay key
-            if self.account_name:
-                account_url = f"https://{self.account_name}.blob.core.windows.net"
-                credential = DefaultAzureCredential()
-                self.blob_service_client = BlobServiceClient(account_url, credential=credential)
-            else:
-                logger.warning("Azure Storage no configurado correctamente")
+            try:
+                connection_string = f"DefaultEndpointsProtocol=https;AccountName={self.account_name};AccountKey={self.account_key};EndpointSuffix=core.windows.net"
+                self.blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+                logger.info("✅ Cliente de Azure Storage inicializado exitosamente")
+            except Exception as e:
+                logger.error(f"❌ Error inicializando cliente de Azure Storage: {str(e)}")
                 self.blob_service_client = None
+        else:
+            logger.warning("❌ Credenciales de Azure Storage no configuradas")
+            self.blob_service_client = None
+
 
     def is_configured(self) -> bool:
         """Verificar si Azure Storage está configurado"""

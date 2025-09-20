@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 const MicrosoftCallback = () => {
-  const [status, setStatus] = useState('processing'); // 'processing', 'success', 'error'
+  const [status, setStatus] = useState('processing');
   const [message, setMessage] = useState('Procesando autenticación...');
+  const { login, updateUser } = useAuth();
 
   useEffect(() => {
     const handleCallback = async () => {
@@ -32,7 +34,6 @@ const MicrosoftCallback = () => {
           setStatus('error');
           setMessage(errorMessages[error] || `Error: ${error}`);
           
-          // Redirigir al login después de 3 segundos
           setTimeout(() => {
             window.location.href = '/';
           }, 3000);
@@ -49,12 +50,14 @@ const MicrosoftCallback = () => {
           return;
         }
 
-        // Guardar tokens en localStorage
+        // Guardar tokens en localStorage para persistencia
         localStorage.setItem('access_token', accessToken);
         localStorage.setItem('refresh_token', refreshToken);
         localStorage.setItem('user_id', userId);
+        localStorage.setItem('auth_method', 'microsoft');
+        localStorage.setItem('auth_timestamp', Date.now().toString());
 
-        // Opcionalmente, verificar el token con el backend
+        // Verificar el token con el backend y obtener datos del usuario
         try {
           const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/auth/users/`, {
             headers: {
@@ -69,20 +72,52 @@ const MicrosoftCallback = () => {
             // Guardar información del usuario
             localStorage.setItem('user_data', JSON.stringify(userData));
             
+            // Actualizar el contexto de autenticación
+            updateUser(userData);
+            
             setStatus('success');
             setMessage('Autenticación exitosa. Redirigiendo...');
             
-            // Redirigir al dashboard después de 1.5 segundos
+            // Redirigir al dashboard de la app después de 1.5 segundos
             setTimeout(() => {
               window.location.href = '/app';
             }, 1500);
           } else {
-            throw new Error('Error verificando usuario');
+            // Si la verificación falla, aún así proceder con la info básica
+            console.warn('Error verificando usuario con backend, procediendo con tokens');
+            
+            // Crear datos básicos del usuario
+            const basicUserData = {
+              id: userId,
+              email: 'usuario@microsoft.com', // Placeholder
+              username: `user_${userId}`,
+              auth_method: 'microsoft'
+            };
+            
+            localStorage.setItem('user_data', JSON.stringify(basicUserData));
+            updateUser(basicUserData);
+            
+            setStatus('success');
+            setMessage('Autenticación exitosa. Redirigiendo...');
+            
+            setTimeout(() => {
+              window.location.href = '/app';
+            }, 1500);
           }
         } catch (verificationError) {
           console.warn('Error verificando usuario, pero tokens guardados:', verificationError);
           
-          // Aún así proceder si tenemos los tokens
+          // Crear datos básicos y proceder
+          const basicUserData = {
+            id: userId,
+            email: 'usuario@microsoft.com',
+            username: `user_${userId}`,
+            auth_method: 'microsoft'
+          };
+          
+          localStorage.setItem('user_data', JSON.stringify(basicUserData));
+          updateUser(basicUserData);
+          
           setStatus('success');
           setMessage('Autenticación exitosa. Redirigiendo...');
           
@@ -103,7 +138,7 @@ const MicrosoftCallback = () => {
     };
 
     handleCallback();
-  }, []);
+  }, [updateUser]);
 
   const handleBackToHome = () => {
     window.location.href = '/';

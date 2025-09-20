@@ -84,23 +84,94 @@ export const AuthProvider = ({ children }) => {
     checkAuthStatus();
   }, []);
 
+  // Función para verificar si hay tokens válidos
+  const hasValidTokens = () => {
+    const accessToken = localStorage.getItem('access_token');
+    const refreshToken = localStorage.getItem('refresh_token');
+    const authTimestamp = localStorage.getItem('auth_timestamp');
+    
+    if (!accessToken || !refreshToken) {
+      return false;
+    }
+
+    // Verificar si la autenticación no es muy antigua (7 días)
+    if (authTimestamp) {
+      const authTime = parseInt(authTimestamp);
+      const now = Date.now();
+      const sevenDays = 7 * 24 * 60 * 60 * 1000; // 7 días en ms
+      
+      if (now - authTime > sevenDays) {
+        console.log('Autenticación expirada por tiempo');
+        return false;
+      }
+    }
+
+    // Verificar si el token no está expirado
+    try {
+      const payload = JSON.parse(atob(accessToken.split('.')[1]));
+      const now = Date.now() / 1000;
+      
+      if (payload.exp < now) {
+        console.log('Access token expirado');
+        // Si el access token está expirado, intentar renovar con refresh token
+        return 'refresh_needed';
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Error parsing token:', error);
+      return false;
+    }
+  };
+
   const checkAuthStatus = async () => {
     dispatch({ type: AUTH_ACTIONS.LOADING, payload: true });
     
     try {
-      if (authService.isAuthenticated()) {
-        // Verificar si el token sigue siendo válido
-        const userData = await authService.getCurrentUser();
+      const tokenStatus = hasValidTokens();
+      
+      if (tokenStatus === false) {
+        // No hay tokens válidos, logout
+        await logout();
+        return;
+      }
+
+      if (tokenStatus === 'refresh_needed') {
+        // Intentar renovar token
+        try {
+          await authService.refreshToken();
+          console.log('Token renovado exitosamente');
+        } catch (refreshError) {
+          console.error('Error renovando token:', refreshError);
+          await logout();
+          return;
+        }
+      }
+
+      // Obtener datos del usuario
+      const userData = localStorage.getItem('user_data');
+      if (userData) {
+        const user = JSON.parse(userData);
         dispatch({ 
           type: AUTH_ACTIONS.LOGIN_SUCCESS, 
-          payload: { user: userData } 
+          payload: { user } 
         });
       } else {
-        dispatch({ type: AUTH_ACTIONS.LOGOUT });
+        // Si no hay datos del usuario, intentar obtenerlos del backend
+        try {
+          const userData = await authService.getCurrentUser();
+          localStorage.setItem('user_data', JSON.stringify(userData));
+          dispatch({ 
+            type: AUTH_ACTIONS.LOGIN_SUCCESS, 
+            payload: { user: userData } 
+          });
+        } catch (error) {
+          console.error('Error obteniendo datos del usuario:', error);
+          await logout();
+        }
       }
     } catch (error) {
       console.error('Error verificando autenticación:', error);
-      // Si hay error, limpiar datos locales
       await logout();
     } finally {
       dispatch({ type: AUTH_ACTIONS.LOADING, payload: false });
@@ -113,12 +184,17 @@ export const AuthProvider = ({ children }) => {
     
     try {
       const response = await authService.login(credentials);
-     dispatch({ 
-      type: AUTH_ACTIONS.LOGIN_SUCCESS, 
-      payload: { user: { username: credentials.email } } 
-  });
       
-      toast.success(`¡Bienvenido!`);
+      // Guardar timestamp de autenticación
+      localStorage.setItem('auth_timestamp', Date.now().toString());
+      localStorage.setItem('auth_method', 'local');
+      
+      dispatch({ 
+        type: AUTH_ACTIONS.LOGIN_SUCCESS, 
+        payload: { user: response.user } 
+      });
+      
+      toast.success(`¡Bienvenido, ${response.user?.username || 'usuario'}!`);
       return response;
     } catch (error) {
       const errorMessage = error.response?.data?.detail || 
@@ -159,9 +235,26 @@ export const AuthProvider = ({ children }) => {
     
     try {
       await authService.logout();
+      
+      // Limpiar todos los datos de autenticación
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('user_id');
+      localStorage.removeItem('user_data');
+      localStorage.removeItem('auth_timestamp');
+      localStorage.removeItem('auth_method');
+      
       toast.success('Sesión cerrada exitosamente');
     } catch (error) {
       console.error('Error al cerrar sesión:', error);
+      
+      // Limpiar datos localmente aunque haya error en el backend
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('user_id');
+      localStorage.removeItem('user_data');
+      localStorage.removeItem('auth_timestamp');
+      localStorage.removeItem('auth_method');
     } finally {
       dispatch({ type: AUTH_ACTIONS.LOGOUT });
     }
@@ -169,6 +262,24 @@ export const AuthProvider = ({ children }) => {
 
   const updateUser = (userData) => {
     dispatch({ type: AUTH_ACTIONS.UPDATE_USER, payload: userData });
+    
+    // Actualizar también en localStorage
+    const existingUserData = localStorage.getItem('user_data');
+    if (existingUserData) {
+      const currentUser = JSON.parse(existingUserData);
+      const updatedUser = { ...currentUser, ...userData };
+      localStorage.setItem('user_data', JSON.stringify(updatedUser));
+    } else {
+      localStorage.setItem('user_data', JSON.stringify(userData));
+    }
+
+    // Marcar como autenticado si no lo estaba
+    if (!state.isAuthenticated) {
+      dispatch({ 
+        type: AUTH_ACTIONS.LOGIN_SUCCESS, 
+        payload: { user: userData } 
+      });
+    }
   };
 
   const clearError = () => {

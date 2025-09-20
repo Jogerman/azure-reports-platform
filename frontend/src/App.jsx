@@ -1,4 +1,4 @@
-// frontend/src/App.jsx - VERSIÓN CORREGIDA
+// frontend/src/App.jsx - VERSIÓN FINAL CORREGIDA
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -9,7 +9,7 @@ import { AuthProvider } from './context/AuthContext';
 import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import Reports from './pages/Reports';
-import ReportView from './pages/ReportView'; 
+import ReportView from './pages/ReportView';
 import History from './pages/History';
 import Storage from './pages/Storage';
 import Settings from './pages/Settings';

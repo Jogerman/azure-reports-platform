@@ -1,5 +1,5 @@
 // src/pages/LoginPage.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff, Mail, Lock, LogIn, Loader2 } from 'lucide-react';
 
@@ -15,7 +15,6 @@ const LoginPage = () => {
   // Manejar autenticación con Microsoft
   const handleMicrosoftLogin = () => {
     setIsLoading(true);
-    // Redirigir al endpoint de Microsoft OAuth del backend Django
     const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
     window.location.href = `${apiUrl}/auth/microsoft/login/`;
   };
@@ -45,7 +44,7 @@ const LoginPage = () => {
       await new Promise(resolve => setTimeout(resolve, 1500));
       
       // Después del login exitoso, redirigir al dashboard
-      // window.location.href = '/dashboard';
+      window.location.href = '/app';
       
     } catch (error) {
       console.error('Error en login:', error);
@@ -251,22 +250,6 @@ const LoginPage = () => {
               )}
             </button>
           </div>
-
-          {/* Credenciales de desarrollo (solo para demo) */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 }}
-            className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg"
-          >
-            <div className="flex items-center mb-2">
-              <span className="text-yellow-600 text-sm font-medium">🔧 Credenciales de desarrollo:</span>
-            </div>
-            <p className="text-sm text-yellow-700">
-              <strong>Email:</strong> admin@azurereports.com<br />
-              <strong>Contraseña:</strong> admin123
-            </p>
-          </motion.div>
         </motion.div>
       </div>
     </div>

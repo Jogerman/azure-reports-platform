@@ -1,151 +1,195 @@
 // frontend/src/services/authService.js
-import api from './api';
+import axios from 'axios';
 
-// Mock data para desarrollo
-const MOCK_USER = {
-  id: 1,
-  username: 'admin',
-  email: 'admin@azurereports.com',
-  first_name: 'Admin',
-  last_name: 'User'
-};
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
-const DEMO_CREDENTIALS = {
-  email: 'admin@azurereports.com',
-  password: 'admin123'
-};
+// Configurar axios con interceptors
+const axiosInstance = axios.create({
+  baseURL: `${API_URL}/api`,
+  timeout: 10000,
+});
+
+// Interceptor para agregar token automáticamente
+axiosInstance.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Interceptor para manejar tokens expirados
+axiosInstance.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const original = error.config;
+    
+    if (error.response?.status === 401 && !original._retry) {
+      original._retry = true;
+      
+      try {
+        await authService.refreshToken();
+        const newToken = localStorage.getItem('access_token');
+        original.headers.Authorization = `Bearer ${newToken}`;
+        return axiosInstance(original);
+      } catch (refreshError) {
+        // Si el refresh falla, limpiar todo y redirigir al login
+        authService.clearAuthData();
+        window.location.href = '/';
+        return Promise.reject(refreshError);
+      }
+    }
+    
+    return Promise.reject(error);
+  }
+);
 
 export const authService = {
-  // Login con credenciales
-  login: async (credentials) => {
+  // Login con email y password
+  async login(credentials) {
     try {
-      // Primero intentar con el backend real
-      const response = await api.post('/auth/login/', credentials);
+      const response = await axiosInstance.post('/auth/login/', credentials);
       const { access, refresh, user } = response.data;
       
-      localStorage.setItem('token', access);
-      localStorage.setItem('refreshToken', refresh);
-      localStorage.setItem('user', JSON.stringify(user));
+      // Guardar tokens
+      localStorage.setItem('access_token', access);
+      localStorage.setItem('refresh_token', refresh);
+      localStorage.setItem('user_data', JSON.stringify(user));
+      localStorage.setItem('auth_timestamp', Date.now().toString());
+      localStorage.setItem('auth_method', 'local');
       
-      return { user, token: access };
+      return { user, access, refresh };
     } catch (error) {
-      // Si el backend no está disponible y son las credenciales demo, usar mock
-      if (error.code === 'ERR_NETWORK' || error.response?.status >= 500) {
-        if (credentials.email === DEMO_CREDENTIALS.email && 
-            credentials.password === DEMO_CREDENTIALS.password) {
-          
-          console.log('🔧 Modo desarrollo: usando autenticación mock');
-          
-          // Simular token JWT mock
-          const mockToken = 'mock-jwt-token-for-development';
-          
-          localStorage.setItem('token', mockToken);
-          localStorage.setItem('refreshToken', mockToken);
-          localStorage.setItem('user', JSON.stringify(MOCK_USER));
-          
-          return { user: MOCK_USER, token: mockToken };
-        }
-      }
-      
-      // Re-lanzar error original para otros casos
-      throw new Error(error.response?.data?.detail || error.message || 'Error de inicio de sesión');
+      console.error('Error en login:', error);
+      throw error;
     }
   },
 
   // Registro de usuario
-  register: async (userData) => {
+  async register(userData) {
     try {
-      const response = await api.post('/auth/register/', userData);
+      const response = await axiosInstance.post('/auth/register/', userData);
       return response.data;
     } catch (error) {
-      const errors = error.response?.data;
-      if (errors) {
-        const errorMessages = Object.values(errors).flat().join(', ');
-        throw new Error(errorMessages);
-      }
-      throw new Error('Error de registro');
+      console.error('Error en registro:', error);
+      throw error;
     }
   },
 
   // Logout
-  logout: async () => {
+  async logout() {
     try {
-      await api.post('/auth/logout/');
-    } catch (error) {
-      console.error('Logout error:', error);
-    } finally {
-      localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('user');
-    }
-  },
-
-  // Obtener usuario actual
-  getCurrentUser: async () => {
-    try {
-      const response = await api.get('/auth/users/profile/');
-      return response.data;
-    } catch (error) {
-      // Si hay un usuario mock en localStorage, devolverlo
-      const mockUser = localStorage.getItem('user');
-      if (mockUser && localStorage.getItem('token') === 'mock-jwt-token-for-development') {
-        return JSON.parse(mockUser);
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (refreshToken) {
+        await axiosInstance.post('/auth/logout/', {
+          refresh: refreshToken
+        });
       }
-      throw new Error('Error obteniendo perfil de usuario');
-    }
-  },
-
-  // Actualizar perfil
-  updateProfile: async (userData) => {
-    try {
-      const response = await api.patch('/auth/users/update_profile/', userData);
-      localStorage.setItem('user', JSON.stringify(response.data));
-      return response.data;
     } catch (error) {
-      throw new Error('Error actualizando perfil');
+      console.error('Error en logout:', error);
+    } finally {
+      this.clearAuthData();
     }
   },
 
   // Refresh token
-  refreshToken: async () => {
+  async refreshToken() {
     try {
-      const refreshToken = localStorage.getItem('refreshToken');
-      if (!refreshToken) throw new Error('No refresh token available');
-      
-      // Si es mock token, devolverlo tal como está
-      if (refreshToken === 'mock-jwt-token-for-development') {
-        return refreshToken;
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (!refreshToken) {
+        throw new Error('No refresh token available');
       }
-      
-      const response = await api.post('/auth/refresh/', {
+
+      const response = await axios.post(`${API_URL}/api/auth/refresh/`, {
         refresh: refreshToken
       });
-      
+
       const { access } = response.data;
-      localStorage.setItem('token', access);
+      localStorage.setItem('access_token', access);
+      
+      console.log('Token renovado exitosamente');
       return access;
     } catch (error) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('user');
+      console.error('Error renovando token:', error);
+      this.clearAuthData();
+      throw error;
+    }
+  },
+
+  // Obtener usuario actual
+  async getCurrentUser() {
+    try {
+      const response = await axiosInstance.get('/auth/users/');
+      const userData = response.data.results?.[0] || response.data;
+      
+      // Actualizar datos en localStorage
+      localStorage.setItem('user_data', JSON.stringify(userData));
+      
+      return userData;
+    } catch (error) {
+      console.error('Error obteniendo usuario actual:', error);
       throw error;
     }
   },
 
   // Verificar si está autenticado
-  isAuthenticated: () => {
-    const token = localStorage.getItem('token');
-    const user = localStorage.getItem('user');
-    return !!(token && user);
+  isAuthenticated() {
+    const accessToken = localStorage.getItem('access_token');
+    const refreshToken = localStorage.getItem('refresh_token');
+    
+    if (!accessToken || !refreshToken) {
+      return false;
+    }
+
+    try {
+      // Verificar si el token no está expirado
+      const payload = JSON.parse(atob(accessToken.split('.')[1]));
+      const now = Date.now() / 1000;
+      
+      // Si el token expira en menos de 5 minutos, considerarlo como necesita refresh
+      if (payload.exp < now + 300) {
+        return 'refresh_needed';
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Error verificando token:', error);
+      return false;
+    }
   },
 
-  // Obtener usuario desde localStorage
-  getStoredUser: () => {
+  // Limpiar datos de autenticación
+  clearAuthData() {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user_id');
+    localStorage.removeItem('user_data');
+    localStorage.removeItem('auth_timestamp');
+    localStorage.removeItem('auth_method');
+  },
+
+  // Obtener información del token
+  getTokenInfo() {
+    const accessToken = localStorage.getItem('access_token');
+    if (!accessToken) return null;
+
     try {
-      const user = localStorage.getItem('user');
-      return user ? JSON.parse(user) : null;
-    } catch {
+      const payload = JSON.parse(atob(accessToken.split('.')[1]));
+      return {
+        user_id: payload.user_id,
+        username: payload.username,
+        exp: payload.exp,
+        iat: payload.iat,
+        isExpired: payload.exp < Date.now() / 1000
+      };
+    } catch (error) {
+      console.error('Error parsing token:', error);
       return null;
     }
   }
-};  
+};
+
+export default authService;

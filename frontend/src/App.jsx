@@ -1,4 +1,4 @@
-// src/App.jsx - VERSIÓN CON RUTA DE REPORTVIEW
+// frontend/src/App.jsx - VERSIÓN CORREGIDA
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -42,8 +42,9 @@ function App() {
         <Router>
           <div className="min-h-screen bg-gray-50">
             <Routes>
-              {/* Ruta pública */}
+              {/* Rutas públicas */}
               <Route path="/" element={<LandingPage />} />
+              <Route path="/auth/callback" element={<MicrosoftCallback />} />
               
               {/* Rutas protegidas */}
               <Route path="/app" element={
@@ -53,12 +54,11 @@ function App() {
               }>
                 <Route index element={<Dashboard />} />
                 <Route path="reports" element={<Reports />} />
-                <Route path="reports/:id" element={<ReportView />} /> {/* ✅ NUEVA RUTA */}
+                <Route path="reports/:id" element={<ReportView />} />
                 <Route path="history" element={<History />} />
                 <Route path="storage" element={<Storage />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="profile" element={<Profile />} />
-                <Route path="/auth/callback" element={<MicrosoftCallback />} />
               </Route>
 
               {/* Ruta 404 */}

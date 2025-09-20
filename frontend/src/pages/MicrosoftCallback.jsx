@@ -74,7 +74,7 @@ const MicrosoftCallback = () => {
             
             // Redirigir al dashboard después de 1.5 segundos
             setTimeout(() => {
-              window.location.href = '/dashboard';
+              window.location.href = '/app';
             }, 1500);
           } else {
             throw new Error('Error verificando usuario');
@@ -87,7 +87,7 @@ const MicrosoftCallback = () => {
           setMessage('Autenticación exitosa. Redirigiendo...');
           
           setTimeout(() => {
-            window.location.href = '/dashboard';
+            window.location.href = '/app';
           }, 1500);
         }
 

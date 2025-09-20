@@ -8,6 +8,7 @@ const initialState = {
   user: null,
   isAuthenticated: false,
   isLoading: true,
+  isInitialized: false, // Nuevo estado para saber cuando la verificación inicial terminó
   error: null
 };
 
@@ -18,7 +19,8 @@ const AUTH_ACTIONS = {
   LOGOUT: 'LOGOUT',
   SET_ERROR: 'SET_ERROR',
   CLEAR_ERROR: 'CLEAR_ERROR',
-  UPDATE_USER: 'UPDATE_USER'
+  UPDATE_USER: 'UPDATE_USER',
+  SET_INITIALIZED: 'SET_INITIALIZED'
 };
 
 // Reducer para manejar el estado de autenticación
@@ -36,6 +38,7 @@ const authReducer = (state, action) => {
         user: action.payload.user,
         isAuthenticated: true,
         isLoading: false,
+        isInitialized: true,
         error: null
       };
     
@@ -45,6 +48,7 @@ const authReducer = (state, action) => {
         user: null,
         isAuthenticated: false,
         isLoading: false,
+        isInitialized: true,
         error: null
       };
     
@@ -52,7 +56,8 @@ const authReducer = (state, action) => {
       return {
         ...state,
         error: action.payload,
-        isLoading: false
+        isLoading: false,
+        isInitialized: true
       };
     
     case AUTH_ACTIONS.CLEAR_ERROR:
@@ -64,7 +69,16 @@ const authReducer = (state, action) => {
     case AUTH_ACTIONS.UPDATE_USER:
       return {
         ...state,
-        user: { ...state.user, ...action.payload }
+        user: { ...state.user, ...action.payload },
+        isAuthenticated: true,
+        isInitialized: true
+      };
+    
+    case AUTH_ACTIONS.SET_INITIALIZED:
+      return {
+        ...state,
+        isInitialized: true,
+        isLoading: false
       };
     
     default:
@@ -132,7 +146,7 @@ export const AuthProvider = ({ children }) => {
       
       if (tokenStatus === false) {
         // No hay tokens válidos, logout
-        await logout();
+        dispatch({ type: AUTH_ACTIONS.LOGOUT });
         return;
       }
 
@@ -143,7 +157,7 @@ export const AuthProvider = ({ children }) => {
           console.log('Token renovado exitosamente');
         } catch (refreshError) {
           console.error('Error renovando token:', refreshError);
-          await logout();
+          dispatch({ type: AUTH_ACTIONS.LOGOUT });
           return;
         }
       }
@@ -152,6 +166,7 @@ export const AuthProvider = ({ children }) => {
       const userData = localStorage.getItem('user_data');
       if (userData) {
         const user = JSON.parse(userData);
+        console.log('Usuario encontrado en localStorage:', user);
         dispatch({ 
           type: AUTH_ACTIONS.LOGIN_SUCCESS, 
           payload: { user } 
@@ -159,6 +174,7 @@ export const AuthProvider = ({ children }) => {
       } else {
         // Si no hay datos del usuario, intentar obtenerlos del backend
         try {
+          console.log('Obteniendo datos del usuario del backend...');
           const userData = await authService.getCurrentUser();
           localStorage.setItem('user_data', JSON.stringify(userData));
           dispatch({ 
@@ -167,14 +183,21 @@ export const AuthProvider = ({ children }) => {
           });
         } catch (error) {
           console.error('Error obteniendo datos del usuario:', error);
-          await logout();
+          // Si falla obtener datos del usuario pero hay tokens, usar datos básicos
+          const basicUser = {
+            id: localStorage.getItem('user_id'),
+            email: 'usuario@microsoft.com',
+            username: 'Usuario'
+          };
+          dispatch({ 
+            type: AUTH_ACTIONS.LOGIN_SUCCESS, 
+            payload: { user: basicUser } 
+          });
         }
       }
     } catch (error) {
       console.error('Error verificando autenticación:', error);
-      await logout();
-    } finally {
-      dispatch({ type: AUTH_ACTIONS.LOADING, payload: false });
+      dispatch({ type: AUTH_ACTIONS.LOGOUT });
     }
   };
 
@@ -226,7 +249,7 @@ export const AuthProvider = ({ children }) => {
       toast.error(errorMessage);
       throw error;
     } finally {
-      dispatch({ type: AUTH_ACTIONS.LOADING, payload: false });
+      dispatch({ type: AUTH_ACTIONS.SET_INITIALIZED });
     }
   };
 
@@ -261,7 +284,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const updateUser = (userData) => {
-    dispatch({ type: AUTH_ACTIONS.UPDATE_USER, payload: userData });
+    console.log('Actualizando usuario en contexto:', userData);
     
     // Actualizar también en localStorage
     const existingUserData = localStorage.getItem('user_data');
@@ -273,13 +296,8 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('user_data', JSON.stringify(userData));
     }
 
-    // Marcar como autenticado si no lo estaba
-    if (!state.isAuthenticated) {
-      dispatch({ 
-        type: AUTH_ACTIONS.LOGIN_SUCCESS, 
-        payload: { user: userData } 
-      });
-    }
+    // Actualizar contexto
+    dispatch({ type: AUTH_ACTIONS.UPDATE_USER, payload: userData });
   };
 
   const clearError = () => {

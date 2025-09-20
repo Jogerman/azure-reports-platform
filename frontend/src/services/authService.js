@@ -3,13 +3,13 @@ import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
-// Configurar axios con interceptors
+// Crear instancia de axios principal
 const axiosInstance = axios.create({
   baseURL: `${API_URL}/api`,
   timeout: 10000,
 });
 
-// Interceptor para agregar token automáticamente
+// Interceptor para agregar token automáticamente a TODAS las peticiones
 axiosInstance.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
@@ -36,7 +36,7 @@ axiosInstance.interceptors.response.use(
         original.headers.Authorization = `Bearer ${newToken}`;
         return axiosInstance(original);
       } catch (refreshError) {
-        // Si el refresh falla, limpiar todo y redirigir al login
+        console.error('Error renovando token:', refreshError);
         authService.clearAuthData();
         window.location.href = '/';
         return Promise.reject(refreshError);
@@ -191,5 +191,8 @@ export const authService = {
     }
   }
 };
+
+// Exportar también la instancia de axios configurada para usar en otros servicios
+export const apiClient = axiosInstance;
 
 export default authService;

@@ -5,16 +5,19 @@ import { useAuth } from '../../context/AuthContext';
 import Loading from '../common/Loading';
 
 const PrivateRoute = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuth(); // CAMBIAR: era 'loading'
+  const { isAuthenticated, isLoading, isInitialized } = useAuth();
 
-  if (isLoading) {
+  // Mostrar loading mientras se verifica la autenticación inicial
+  if (isLoading || !isInitialized) {
     return <Loading fullScreen text="Verificando autenticación..." />;
   }
 
+  // Si no está autenticado después de la verificación inicial, redirigir al login
   if (!isAuthenticated) {
     return <Navigate to="/" replace />;
   }
 
+  // Si todo está bien, mostrar el contenido protegido
   return children;
 };
 

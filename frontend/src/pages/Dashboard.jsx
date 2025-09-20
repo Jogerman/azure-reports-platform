@@ -21,8 +21,9 @@ import {
 import { 
   useDashboardStats, 
   useRecentReports, 
-  useRecentActivity 
+  useRecentActivity
 } from '../hooks/useReports';
+import { useSafeDashboardStats } from '../hooks/useSafeQuery';
 import DashboardCard from '../components/dashboard/DashboardCard';
 import QuickActions from '../components/dashboard/QuickActions';
 import RecentReports from '../components/dashboard/RecentReports';
@@ -35,7 +36,7 @@ const Dashboard = () => {
   const [showUpload, setShowUpload] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   
-  const { data: stats, isLoading: statsLoading, error: statsError } = useDashboardStats();
+  const { data: stats, isLoading: statsLoading, error: statsError } = useSafeDashboardStats();
   const { data: recentReports, isLoading: reportsLoading } = useRecentReports(5);
   const { data: recentActivity, isLoading: activityLoading } = useRecentActivity(8);
 

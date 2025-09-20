@@ -16,7 +16,7 @@ const LoginPage = () => {
   const handleMicrosoftLogin = () => {
     setIsLoading(true);
     const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-    window.location.href = `${apiUrl}/auth/microsoft/login/`;
+    window.location.href = `${apiUrl}/api/auth/microsoft/login/`;
   };
 
   // Manejar login local

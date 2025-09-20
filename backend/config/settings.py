@@ -27,6 +27,13 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(','
 LOGS_DIR = BASE_DIR / 'logs'
 LOGS_DIR.mkdir(exist_ok=True)
 
+# Permitir registro local (cambiar a False en producción si solo quieres Microsoft)
+ALLOW_LOCAL_REGISTRATION = config('ALLOW_LOCAL_REGISTRATION', default=True, cast=bool)
+
+# Configuración para redirecciones después del login
+LOGIN_REDIRECT_URL = '/dashboard/'
+LOGOUT_REDIRECT_URL = '/auth/login/'
+
 # Application definition
 DJANGO_APPS = [
     'django.contrib.admin',
@@ -191,6 +198,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -198,7 +207,7 @@ CORS_ALLOW_ALL_ORIGINS = config('DEBUG', default=False, cast=bool)  # Solo en de
 
 # Agregar estos headers adicionales:
 CORS_ALLOW_HEADERS = [
-    'accept',
+   'accept',
     'accept-encoding',
     'authorization',
     'content-type',
@@ -207,10 +216,11 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+    'x-microsoft-auth-token',
 ]
 
 # Azure Blob Storage Settings
-USE_AZURE_STORAGE = config('USE_AZURE_STORAGE', default=False, cast=bool)
+USE_AZURE_STORAGE = config('USE_AZURE_STORAGE', default=True, cast=bool)
 
 if USE_AZURE_STORAGE:
     # Azure Storage configuration
@@ -225,24 +235,30 @@ if USE_AZURE_STORAGE:
 else:
     print("💾 Usando almacenamiento local (archivos en media/)")
 
-# Microsoft Authentication
-MICROSOFT_AUTH_CLIENT_ID = config('MICROSOFT_AUTH_CLIENT_ID', default='')
-MICROSOFT_AUTH_CLIENT_SECRET = config('MICROSOFT_AUTH_CLIENT_SECRET', default='')
-MICROSOFT_AUTH_TENANT_ID = config('MICROSOFT_AUTH_TENANT_ID', default='')
+# Variables de entorno para Microsoft OAuth
+MICROSOFT_AUTH_CLIENT_ID = config('MICROSOFT_CLIENT_ID', default='')
+MICROSOFT_AUTH_CLIENT_SECRET = config('MICROSOFT_CLIENT_SECRET', default='')
+MICROSOFT_AUTH_TENANT_ID = config('MICROSOFT_TENANT_ID', default='common')
+MICROSOFT_AUTH_REDIRECT_URI = config('MICROSOFT_REDIRECT_URI', default='http://localhost:8000/api/auth/microsoft/callback/')
 
-# Cache
-#CACHES = {
-#    'default': {
-#        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-#        'LOCATION': config('REDIS_URL', default='redis://localhost:6379/1'),
-#        'OPTIONS': {
-#            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-#        },
-#        'KEY_PREFIX': 'azure_reports',
-#        'TIMEOUT': 300,
-#    }
-#}
-# CACHE TEMPORAL (USAR ESTO):
+# Scopes para Microsoft OAuth
+MICROSOFT_AUTH_SCOPES = [
+    'email',
+    'User.Read'
+]
+
+# Configuración adicional para Microsoft OAuth
+MICROSOFT_OAUTH = {
+    'CLIENT_ID': MICROSOFT_AUTH_CLIENT_ID,
+    'CLIENT_SECRET': MICROSOFT_AUTH_CLIENT_SECRET,
+    'TENANT_ID': MICROSOFT_AUTH_TENANT_ID,
+    'REDIRECT_URI': MICROSOFT_AUTH_REDIRECT_URI,
+    'SCOPES': MICROSOFT_AUTH_SCOPES,
+    'ENABLED': bool(MICROSOFT_AUTH_CLIENT_ID and MICROSOFT_AUTH_CLIENT_SECRET),
+    'AUTHORITY': f'https://login.microsoftonline.com/{MICROSOFT_AUTH_TENANT_ID}',
+    'GRAPH_ENDPOINT': 'https://graph.microsoft.com/v1.0/me'
+}
+
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
@@ -317,6 +333,11 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        'msal': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
         'apps.reports': {
             'handlers': ['reports_file', 'console'],
             'level': 'INFO',
@@ -379,17 +400,3 @@ ENABLE_ANALYTICS = config('ENABLE_ANALYTICS', default=True, cast=bool)
 ANALYTICS_RETENTION_DAYS = config('ANALYTICS_RETENTION_DAYS', default=90, cast=int)
 
 
-# Microsoft OAuth Settings
-MICROSOFT_OAUTH = {
-    'CLIENT_ID': config('MICROSOFT_CLIENT_ID', default=''),
-    'CLIENT_SECRET': config('MICROSOFT_CLIENT_SECRET', default=''),
-    'TENANT_ID': config('MICROSOFT_TENANT_ID', default='common'),
-    'REDIRECT_URI': config('MICROSOFT_REDIRECT_URI', default='http://localhost:8000/api/auth/microsoft/callback/'),
-    'SCOPES': [
-        'openid',
-        'profile', 
-        'email',
-        'User.Read'
-    ],
-    'ENABLED': bool(config('MICROSOFT_CLIENT_ID', default='')),
-}

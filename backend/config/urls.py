@@ -1,3 +1,4 @@
+# backend/config/urls.py
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
@@ -28,6 +29,9 @@ urlpatterns = [
     path('api/reports/', include('apps.reports.urls')),
     path('api/files/', include('apps.storage.urls')),
     path('api/dashboard/', include('apps.analytics.urls')),
+    
+    # Traditional Django views (para templates) - AGREGAR ESTA LÍNEA
+    path('auth/', include('apps.authentication.traditional_urls')),
     
     # Root API
     path('api/', include(router.urls)),

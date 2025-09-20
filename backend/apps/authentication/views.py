@@ -1,65 +1,58 @@
 # backend/apps/authentication/views.py
-from rest_framework import viewsets, status, permissions
-from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.views import TokenObtainPairView
-from django.contrib.auth import get_user_model, login, logout
-from django.shortcuts import render, redirect
-from django.contrib.auth.decorators import login_required
+import logging
+from django.contrib.auth import login, logout
 from django.contrib import messages
+from django.shortcuts import render, redirect
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_protect
+from django.contrib.auth.decorators import login_required
 from django.conf import settings
-from django.urls import reverse
-from django.http import HttpResponse, JsonResponse
-import logging
+from django.http import JsonResponse
+from rest_framework import viewsets, permissions, status
+from rest_framework.response import Response
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.views import APIView
 
+from .models import User
 from .serializers import (
-    UserSerializer, UserRegistrationSerializer, 
+    UserSerializer, 
+    UserRegistrationSerializer, 
     CustomTokenObtainPairSerializer
 )
-from .forms import CustomUserCreationForm, CustomAuthenticationForm
+from .forms import CustomAuthenticationForm, CustomUserCreationForm
 
-User = get_user_model()
 logger = logging.getLogger(__name__)
 
 # ================================================================
-# API REST VIEWS (para React Frontend)
+# API VIEWS
 # ================================================================
 
-class UserViewSet(viewsets.ModelViewSet):
-    """ViewSet para gestión de usuarios"""
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
+
+class UserViewSet(viewsets.ReadOnlyModelViewSet):
+    """Vista para gestión de usuarios"""
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
-        """Solo el usuario actual puede ver/editar su perfil"""
         return User.objects.filter(id=self.request.user.id)
-    
-    @action(detail=False, methods=['get'])
-    def profile(self, request):
-        """Obtener perfil del usuario actual"""
-        serializer = self.get_serializer(request.user)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['put', 'patch'])
-    def update_profile(self, request):
-        """Actualizar perfil del usuario actual"""
-        serializer = self.get_serializer(
-            request.user, 
-            data=request.data, 
-            partial=True
-        )
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
 
-class CustomTokenObtainPairView(TokenObtainPairView):
-    """Vista personalizada para obtener tokens JWT"""
-    serializer_class = CustomTokenObtainPairSerializer
+class LogoutView(APIView):
+    """Vista para logout (blacklist del token)"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        try:
+            refresh_token = request.data.get("refresh")
+            if refresh_token:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+            return Response({"message": "Sesión cerrada exitosamente"}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": "Error cerrando sesión"}, status=status.HTTP_400_BAD_REQUEST)
 
 class UserRegistrationView(viewsets.GenericViewSet):
     """Vista para registro de usuarios"""
@@ -91,8 +84,10 @@ def microsoft_login_api(request):
         ms_auth_service = MicrosoftAuthService(request)
         
         if not ms_auth_service.is_configured():
+            logger.error("Microsoft OAuth no está configurado correctamente")
             return Response({
-                'error': 'Microsoft OAuth no está configurado correctamente.'
+                'error': 'Microsoft OAuth no está configurado correctamente.',
+                'details': 'Verificar variables MICROSOFT_CLIENT_ID y MICROSOFT_CLIENT_SECRET en .env'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         auth_url = ms_auth_service.get_auth_url()
@@ -102,18 +97,22 @@ def microsoft_login_api(request):
             # Redirigir directamente a Microsoft
             return redirect(auth_url)
         else:
+            logger.error("Error al generar la URL de autenticación con Microsoft")
             return Response({
                 'error': 'Error al generar la URL de autenticación con Microsoft.'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
-    except ImportError:
+    except ImportError as e:
+        logger.error(f"MSAL no está disponible: {e}")
         return Response({
-            'error': 'Microsoft OAuth no está disponible. Instala la librería msal.'
+            'error': 'Microsoft OAuth no está disponible. Instala la librería msal.',
+            'details': 'pip install msal>=1.24.1'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     except Exception as e:
         logger.error(f"Error en Microsoft login API: {e}")
         return Response({
-            'error': 'Servicio de Microsoft no disponible temporalmente.'
+            'error': 'Servicio de Microsoft no disponible temporalmente.',
+            'details': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
@@ -127,12 +126,14 @@ def microsoft_callback_api(request):
     
     # Manejar errores de OAuth
     if error:
+        logger.warning(f"Error en callback de Microsoft: {error} - {error_description}")
         if error == 'access_denied':
             return redirect('http://localhost:5173/?error=access_denied')
         else:
             return redirect(f'http://localhost:5173/?error={error}')
     
     if not auth_code:
+        logger.error("Código de autorización faltante en callback")
         return redirect('http://localhost:5173/?error=missing_code')
     
     try:
@@ -141,24 +142,28 @@ def microsoft_callback_api(request):
         ms_auth_service = MicrosoftAuthService(request)
         
         if not ms_auth_service.is_configured():
+            logger.error("Microsoft OAuth no está configurado en callback")
             return redirect('http://localhost:5173/?error=not_configured')
         
         # Obtener token
-        logger.info(f"Procesando callback con code y state recibido")
+        logger.info(f"Procesando callback con código de autorización")
         token_response = ms_auth_service.get_token_from_code(auth_code, state)
         
         if not token_response or 'access_token' not in token_response:
             error_msg = token_response.get('error_description', 'Token inválido') if token_response else 'Token inválido'
+            logger.error(f"Error obteniendo token: {error_msg}")
             return redirect(f'http://localhost:5173/?error=token_error&description={error_msg}')
         
         # Obtener información del usuario
         user_info = ms_auth_service.get_user_info(token_response['access_token'])
         
         if not user_info:
+            logger.error("Error obteniendo información del usuario")
             return redirect('http://localhost:5173/?error=user_info_error')
         
         # Validar tenant si está configurado
         if not ms_auth_service.validate_tenant(user_info):
+            logger.warning("Usuario de tenant no autorizado")
             return redirect('http://localhost:5173/?error=invalid_tenant')
         
         # Crear o actualizar usuario
@@ -166,8 +171,6 @@ def microsoft_callback_api(request):
         
         if user:
             # Generar tokens JWT para el frontend
-            from rest_framework_simplejwt.tokens import RefreshToken
-            
             refresh = RefreshToken.for_user(user)
             access_token = str(refresh.access_token)
             refresh_token = str(refresh)
@@ -181,11 +184,14 @@ def microsoft_callback_api(request):
             
             # Redirigir al frontend con los tokens
             redirect_url = f'http://localhost:5173/auth/callback?access_token={access_token}&refresh_token={refresh_token}&user_id={user.id}'
+            logger.info(f"Login exitoso para usuario: {user.email}")
             return redirect(redirect_url)
         else:
+            logger.error("Error creando o actualizando usuario")
             return redirect('http://localhost:5173/?error=user_creation_error')
             
     except ImportError:
+        logger.error("MSAL no está disponible en callback")
         return redirect('http://localhost:5173/?error=msal_not_available')
     except Exception as e:
         logger.error(f"Error inesperado en callback de Microsoft: {e}")
@@ -209,13 +215,9 @@ def login_view(request):
     
     try:
         # Verificar configuración básica de Microsoft
-        if (hasattr(settings, 'MICROSOFT_AUTH_CLIENT_ID') and 
-            getattr(settings, 'MICROSOFT_AUTH_CLIENT_ID', '') and
-            hasattr(settings, 'MICROSOFT_AUTH_TENANT_ID') and 
-            getattr(settings, 'MICROSOFT_AUTH_TENANT_ID', '')):
-            
-            # Intentar importar el servicio
-            from .services import MicrosoftAuthService
+        from .services import MicrosoftAuthService, is_microsoft_configured
+        
+        if is_microsoft_configured():
             ms_auth_service = MicrosoftAuthService(request)
             
             if ms_auth_service.is_configured():
@@ -471,58 +473,38 @@ def test_microsoft_config(request):
                 <li>Client ID: {'✅' if config_status['client_id'] else '❌'}</li>
                 <li>Client Secret: {'✅' if config_status['client_secret'] else '❌'}</li>
                 <li>Tenant ID: {'✅' if config_status['tenant_id'] else '❌'}</li>
-                <li>Redirect URI: {config_status['redirect_uri'] or '❌ Not set'}</li>
-                <li>Scopes: {', '.join(config_status['scopes']) if config_status['scopes'] else '❌ Not set'}</li>
+                <li>Redirect URI: {config_status['redirect_uri']}</li>
+                <li>Auth URL Generated: {'✅' if config_status.get('auth_url_generated', False) else '❌'}</li>
             </ul>
             
-            {'<div class="status success">Auth URL can be generated ✅</div>' if config_status.get('auth_url_generated') else ''}
-            {'<div class="status error">Auth URL Error: ' + config_status.get('auth_url_error', '') + '</div>' if config_status.get('auth_url_error') else ''}
+            {f'<p><strong>Sample Auth URL:</strong> {config_status["sample_auth_url"]}</p>' if config_status.get('sample_auth_url') else ''}
+            {f'<p><strong>Error:</strong> {config_status["auth_url_error"]}</p>' if config_status.get('auth_url_error') else ''}
             
-            <p><a href="/auth/login/">← Back to Login</a></p>
+            <h2>Environment Variables</h2>
+            <pre>
+MICROSOFT_CLIENT_ID = {'SET' if config_status['client_id'] else 'NOT SET'}
+MICROSOFT_CLIENT_SECRET = {'SET' if config_status['client_secret'] else 'NOT SET'}
+MICROSOFT_TENANT_ID = {'SET' if config_status['tenant_id'] else 'NOT SET'}
+MICROSOFT_REDIRECT_URI = {config_status['redirect_uri']}
+            </pre>
+            
+            <h2>Next Steps</h2>
+            {'<p>✅ Microsoft OAuth is properly configured! You can now test the login.</p>' if config_status['configured'] else '<p>❌ Please configure the missing environment variables in your .env file.</p>'}
         </body>
         </html>
         """
         
+        from django.http import HttpResponse
         return HttpResponse(html_content)
         
-    except ImportError:
-        html_content = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Microsoft OAuth Configuration Test</title>
-            <style>body { font-family: Arial, sans-serif; margin: 40px; }</style>
-        </head>
-        <body>
-            <h1>Microsoft OAuth Configuration Test</h1>
-            <div style="background-color: #f8d7da; padding: 10px; border-radius: 5px;">
-                ❌ MSAL library not installed. Run: pip install msal
-            </div>
-            <p><a href="/auth/login/">← Back to Login</a></p>
-        </body>
-        </html>
-        """
-        return HttpResponse(html_content)
-
-class LogoutView(APIView):
-    """Vista para logout que invalida el refresh token"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def post(self, request):
-        try:
-            refresh_token = request.data.get('refresh')
-            if refresh_token:
-                token = RefreshToken(refresh_token)
-                token.blacklist()
-            
-            return Response({
-                'message': 'Logout exitoso'
-            }, status=status.HTTP_200_OK)
-        except TokenError:
-            return Response({
-                'error': 'Token inválido'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response({
-                'error': 'Error en logout'
-            }, status=status.HTTP_400_BAD_REQUEST)
+    except ImportError as e:
+        return JsonResponse({
+            'error': 'MSAL library not available',
+            'details': 'Install with: pip install msal>=1.24.1',
+            'exception': str(e)
+        })
+    except Exception as e:
+        return JsonResponse({
+            'error': 'Unexpected error',
+            'details': str(e)
+        })

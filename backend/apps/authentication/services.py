@@ -11,6 +11,18 @@ import uuid
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
+def is_microsoft_configured():
+    """Función helper para verificar si Microsoft OAuth está configurado"""
+    try:
+        client_id = config('MICROSOFT_CLIENT_ID', default='')
+        client_secret = config('MICROSOFT_CLIENT_SECRET', default='')
+        
+        return bool(client_id and client_secret and 
+                   client_id != 'your-client-id' and 
+                   client_secret != 'your-client-secret')
+    except Exception:
+        return False
+
 class MicrosoftAuthService:
     """
     Servicio para autenticación con Microsoft OAuth usando MSAL
@@ -25,8 +37,6 @@ class MicrosoftAuthService:
         
         # Scopes para obtener información del usuario
         self.scopes = [
-            'openid',
-            'profile',
             'email',
             'User.Read'
         ]
@@ -56,7 +66,7 @@ class MicrosoftAuthService:
             logger.error(f"Error verificando configuración Microsoft OAuth: {e}")
             return False
     
-    def get_authorization_url(self, state=None):
+    def get_auth_url(self, state=None):
         """Generar URL de autorización de Microsoft"""
         try:
             if not self.is_configured():
@@ -81,11 +91,15 @@ class MicrosoftAuthService:
             )
             
             logger.info(f"URL de autorización generada para Microsoft OAuth")
-            return auth_url, state
+            return auth_url
             
         except Exception as e:
             logger.error(f"Error generando URL de autorización: {e}")
             raise ValidationError(f"Error en Microsoft OAuth: {str(e)}")
+    
+    def get_authorization_url(self, state=None):
+        """Alias para mantener compatibilidad"""
+        return self.get_auth_url(state)
     
     def get_token_from_code(self, authorization_code, state=None):
         """Intercambiar código de autorización por tokens"""
@@ -109,7 +123,7 @@ class MicrosoftAuthService:
             
             if 'error' in result:
                 error_msg = result.get('error_description', result.get('error', 'Error desconocido'))
-                logger.error(f"Error obteniendo token: {error_msg}")
+                logger.error(f"Error obteniendo token de Microsoft: {error_msg}")
                 raise ValidationError(f"Error de autenticación: {error_msg}")
             
             logger.info("Token obtenido exitosamente de Microsoft")
@@ -118,65 +132,49 @@ class MicrosoftAuthService:
         except ValidationError:
             raise
         except Exception as e:
-            logger.error(f"Error intercambiando código por token: {e}")
-            raise ValidationError(f"Error en autenticación Microsoft: {str(e)}")
+            logger.error(f"Error inesperado obteniendo token: {e}")
+            raise ValidationError(f"Error interno: {str(e)}")
     
     def get_user_info(self, access_token):
-        """Obtener información del usuario usando el token de acceso"""
+        """Obtener información del usuario desde Microsoft Graph"""
         try:
             headers = {
                 'Authorization': f'Bearer {access_token}',
                 'Content-Type': 'application/json'
             }
             
-            # Llamar a Microsoft Graph API
-            response = requests.get(
-                self.graph_endpoint,
-                headers=headers,
-                timeout=30
-            )
+            response = requests.get(self.graph_endpoint, headers=headers, timeout=10)
             
-            if response.status_code != 200:
-                logger.error(f"Error llamando Graph API: {response.status_code} - {response.text}")
-                raise ValidationError("Error obteniendo información del usuario")
-            
-            user_data = response.json()
-            
-            # Normalizar datos del usuario
-            normalized_data = {
-                'id': user_data.get('id'),
-                'email': user_data.get('mail') or user_data.get('userPrincipalName'),
-                'first_name': user_data.get('givenName', ''),
-                'last_name': user_data.get('surname', ''),
-                'display_name': user_data.get('displayName', ''),
-                'tenant_id': user_data.get('tenant_id', self.tenant_id),
-                'raw_data': user_data
-            }
-            
-            logger.info(f"Información de usuario obtenida: {normalized_data.get('email')}")
-            return normalized_data
-            
-        except ValidationError:
-            raise
+            if response.status_code == 200:
+                user_data = response.json()
+                logger.info(f"Información de usuario obtenida: {user_data.get('userPrincipalName', 'unknown')}")
+                return user_data
+            else:
+                logger.error(f"Error obteniendo info del usuario: {response.status_code} - {response.text}")
+                return None
+                
+        except requests.RequestException as e:
+            logger.error(f"Error en petición a Microsoft Graph: {e}")
+            return None
         except Exception as e:
-            logger.error(f"Error obteniendo información del usuario: {e}")
-            raise ValidationError(f"Error obteniendo datos del usuario: {str(e)}")
+            logger.error(f"Error inesperado obteniendo info del usuario: {e}")
+            return None
     
     def validate_tenant(self, user_info):
-        """Validar que el usuario pertenezca al tenant autorizado"""
+        """Validar que el usuario pertenece al tenant correcto"""
         try:
-            # Si no hay restricción de tenant, permitir cualquiera
-            if self.tenant_id == 'common' or not self.tenant_id:
+            # Si el tenant es 'common', permitir cualquier usuario
+            if self.tenant_id == 'common':
                 return True
             
-            # Validar tenant específico
-            user_tenant = user_info.get('tenant_id', '')
+            # Verificar el tenant del usuario
+            user_tenant = user_info.get('tid', '')
             
-            if user_tenant and user_tenant != self.tenant_id:
-                logger.warning(f"Usuario de tenant no autorizado: {user_tenant}")
-                return False
+            if user_tenant and user_tenant == self.tenant_id:
+                return True
             
-            return True
+            logger.warning(f"Usuario de tenant no autorizado: {user_tenant}")
+            return False
             
         except Exception as e:
             logger.error(f"Error validando tenant: {e}")
@@ -185,28 +183,35 @@ class MicrosoftAuthService:
     def create_or_update_user(self, user_info):
         """Crear o actualizar usuario basado en información de Microsoft"""
         try:
-            email = user_info.get('email')
+            email = user_info.get('mail') or user_info.get('userPrincipalName', '')
+            
             if not email:
-                raise ValidationError("Email requerido para crear usuario")
+                raise ValidationError("Email no disponible en la respuesta de Microsoft")
             
             # Buscar usuario existente
+            user = None
             try:
-                user = User.objects.get(email=email)
+                user = User.objects.get(email__iexact=email)
+                logger.info(f"Usuario existente encontrado: {email}")
                 
-                # Actualizar información existente
-                user.first_name = user_info.get('first_name', user.first_name)
-                user.last_name = user_info.get('last_name', user.last_name)
+                # Actualizar información si es necesario
+                updated = False
                 
-                # Actualizar último método de login si el campo existe
-                if hasattr(user, 'last_login_provider'):
-                    user.last_login_provider = 'microsoft'
+                if user_info.get('givenName') and user.first_name != user_info['givenName']:
+                    user.first_name = user_info['givenName']
+                    updated = True
                 
-                user.save()
-                logger.info(f"Usuario actualizado: {email}")
+                if user_info.get('surname') and user.last_name != user_info['surname']:
+                    user.last_name = user_info['surname']
+                    updated = True
+                
+                if updated:
+                    user.save()
+                    logger.info(f"Usuario actualizado: {email}")
                 
             except User.DoesNotExist:
                 # Crear nuevo usuario
-                username = email.split('@')[0]  # Usar parte local del email como username
+                username = email.split('@')[0]  # Usar la parte antes del @ como username
                 
                 # Asegurar username único
                 counter = 1
@@ -218,8 +223,8 @@ class MicrosoftAuthService:
                 user = User.objects.create_user(
                     username=username,
                     email=email,
-                    first_name=user_info.get('first_name', ''),
-                    last_name=user_info.get('last_name', ''),
+                    first_name=user_info.get('givenName', ''),
+                    last_name=user_info.get('surname', ''),
                     is_active=True
                 )
                 
@@ -267,56 +272,5 @@ class MicrosoftAuthService:
         except ValidationError:
             raise
         except Exception as e:
-            logger.error(f"Error renovando token: {e}")
-            raise ValidationError(f"Error renovando token: {str(e)}")
-
-
-class MicrosoftGraphService:
-    """
-    Servicio adicional para interactuar con Microsoft Graph API
-    """
-    
-    def __init__(self, access_token):
-        self.access_token = access_token
-        self.graph_base_url = "https://graph.microsoft.com/v1.0"
-        self.headers = {
-            'Authorization': f'Bearer {access_token}',
-            'Content-Type': 'application/json'
-        }
-    
-    def get_user_profile(self):
-        """Obtener perfil completo del usuario"""
-        try:
-            response = requests.get(
-                f"{self.graph_base_url}/me",
-                headers=self.headers,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                return response.json()
-            else:
-                logger.error(f"Error obteniendo perfil: {response.status_code}")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Error en Graph API: {e}")
-            return None
-    
-    def get_user_photo(self):
-        """Obtener foto del usuario"""
-        try:
-            response = requests.get(
-                f"{self.graph_base_url}/me/photo/$value",
-                headers={'Authorization': f'Bearer {self.access_token}'},
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                return response.content
-            else:
-                return None
-                
-        except Exception as e:
-            logger.error(f"Error obteniendo foto: {e}")
-            return None
+            logger.error(f"Error inesperado renovando token: {e}")
+            raise ValidationError(f"Error interno renovando token: {str(e)}")

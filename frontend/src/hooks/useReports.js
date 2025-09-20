@@ -6,43 +6,53 @@ import toast from 'react-hot-toast';
 // Configuración de la API
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
-// Función auxiliar para fetch con autenticación
+// Función auxiliar para hacer peticiones con autenticación
 const fetchWithAuth = async (url, options = {}) => {
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('access_token');
   
-  const config = {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-    ...options,
+  if (!token) {
+    throw new Error('No hay token de autenticación disponible');
+  }
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+    ...options.headers,
   };
 
-  // Solo agregar Authorization si tenemos token
-  if (token) {
-    config.headers['Authorization'] = `Bearer ${token}`;
-  }
+  console.log('🌐 Fetch con auth:', { url, hasToken: !!token });
 
-  // Para FormData, remover Content-Type para que el browser lo establezca
-  if (options.body instanceof FormData) {
-    delete config.headers['Content-Type'];
-  }
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  });
 
-  try {
-    const response = await fetch(url, config);
-    
-    // Si 401, limpiar token y redirigir a login
+  if (!response.ok) {
     if (response.status === 401) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
-      throw new Error('Sesión expirada');
+      console.error('❌ Token expirado, intentando renovar...');
+      try {
+        await authService.refreshToken();
+        // Reintentar con nuevo token
+        const newToken = localStorage.getItem('access_token');
+        const newResponse = await fetch(url, {
+          ...options,
+          headers: {
+            ...headers,
+            'Authorization': `Bearer ${newToken}`,
+          },
+        });
+        return newResponse;
+      } catch (refreshError) {
+        console.error('❌ Error renovando token:', refreshError);
+        authService.clearAuthData();
+        window.location.href = '/';
+        throw new Error('Sesión expirada');
+      }
     }
-    
-    return response;
-  } catch (error) {
-    console.error('Error en fetch:', error);
-    throw error;
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
   }
+
+  return response;
 };
 // 📁 SERVICIO DE ARCHIVOS
 const fileService = {
@@ -153,40 +163,26 @@ const reportService = {
     }
   },
 
- async getReports(filters = {}) {
+ async getReports(params = {}) {
     try {
-      console.log('📋 Obteniendo reportes...', filters);
+      const searchParams = new URLSearchParams(params);
+      const url = `${API_BASE_URL}/api/reports/?${searchParams}`;
       
-      const params = new URLSearchParams();
-      Object.keys(filters).forEach(key => {
-        if (filters[key]) {
-          params.append(key, filters[key]);
-        }
-      });
-      
-      const url = `${API_BASE_URL}/reports/${params.toString() ? '?' + params.toString() : ''}`;
+      console.log('📋 Obteniendo reportes con auth...');
       const response = await fetchWithAuth(url);
-      
-      // Si el endpoint no existe, devolver array vacío
-      if (response.status === 404) {
-        console.warn('⚠️ Endpoint /reports/ no encontrado, devolviendo datos mock');
-        return this.getMockReports();
-      }
-      
-      if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`);
-      }
-      
       const data = await response.json();
+      
       console.log('✅ Reportes obtenidos:', data);
-      
-      // Manejar diferentes formatos de respuesta
-      return data.results || data || [];
-      
+      return data;
     } catch (error) {
       console.error('❌ Error obteniendo reportes:', error);
-      // En vez de throw, devolver datos mock para evitar pantalla blanca
-      return this.getMockReports();
+      // Devolver estructura mock en caso de error
+      return {
+        results: [],
+        count: 0,
+        next: null,
+        previous: null
+      };
     }
   },
 
@@ -212,11 +208,13 @@ const reportService = {
   },
 
   async getReport(reportId) {
-    const response = await fetchWithAuth(`${API_BASE_URL}/reports/${reportId}/`);
-    if (!response.ok) {
-      throw new Error('Error obteniendo reporte');
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/reports/${reportId}/`);
+      return response.json();
+    } catch (error) {
+      console.error('❌ Error obteniendo reporte:', error);
+      throw error;
     }
-    return response.json();
   },
 
   async getReportHTML(reportId) {
@@ -228,30 +226,34 @@ const reportService = {
   },
 
   async downloadReportPDF(reportId, filename) {
-    const response = await fetchWithAuth(`${API_BASE_URL}/reports/${reportId}/download/`);
-    if (!response.ok) {
-      throw new Error('Error descargando reporte');
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/reports/${reportId}/download/`);
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename || `reporte_${reportId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('❌ Error descargando reporte:', error);
+      throw error;
     }
-
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename || `reporte_${reportId}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
   },
 
   async deleteReport(reportId) {
-    const response = await fetchWithAuth(`${API_BASE_URL}/reports/${reportId}/`, {
-      method: 'DELETE',
-    });
-    if (!response.ok) {
-      throw new Error('Error eliminando reporte');
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/reports/${reportId}/`, {
+        method: 'DELETE',
+      });
+      return true;
+    } catch (error) {
+      console.error('❌ Error eliminando reporte:', error);
+      throw error;
     }
-    return true;
   },
 };
 
@@ -259,24 +261,51 @@ const reportService = {
 const dashboardService = {
   async getStats() {
     try {
-      console.log('📊 Obteniendo stats...');
-      const response = await fetchWithAuth(`${API_BASE_URL}/dashboard/stats/`);
-
-      if (response.status === 404) {
-        console.warn('⚠️ Endpoint /dashboard/stats/ no implementado');
-        return this.getMockStats();
-      }
-
-      if (!response.ok) {
-        throw new Error('Error obteniendo estadísticas');
-      }
-
+      console.log('📊 Obteniendo stats con auth...');
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/dashboard/stats/`);
       const data = await response.json();
+      
       console.log('✅ Stats obtenidas:', data);
       return data;
     } catch (error) {
-      console.error('Error obteniendo stats:', error);
-      return this.getMockStats();
+      console.error('❌ Error obteniendo stats:', error);
+      // Devolver mock data en caso de error
+      return {
+        total_files: 0,
+        total_reports: 0,
+        completed_reports: 0,
+        total_recommendations: 0,
+        potential_savings: 0,
+        success_rate: 100,
+        last_updated: new Date().toISOString()
+      };
+    }
+  },  
+  async getActivity(limit = 8) {
+    try {
+      console.log('📋 Obteniendo actividad con auth...');
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/dashboard/activity/?limit=${limit}`);
+      const data = await response.json();
+      
+      console.log('✅ Actividad obtenida:', data);
+      return data.results || data || [];
+    } catch (error) {
+      console.error('❌ Error obteniendo actividad:', error);
+      // Devolver mock data en caso de error
+      return [
+        {
+          id: 1,
+          description: 'Archivo CSV procesado exitosamente',
+          timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+          type: 'file_processed'
+        },
+        {
+          id: 2,
+          description: 'Reporte de seguridad generado',
+          timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+          type: 'report_generated'
+        }
+      ];
     }
   },
 
@@ -295,18 +324,17 @@ const dashboardService = {
 
 // 🎣 HOOKS EXPORTADOS (SOLO PRODUCCIÓN)
 
-// Hook para subir archivos
+// Hook para subir archivos (placeholder)
 export const useFileUpload = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const queryClient = useQueryClient();
 
   const uploadFile = async (file) => {
     setIsUploading(true);
     setProgress(0);
 
     try {
-      // Simular progreso
+      // Simular upload por ahora
       const progressInterval = setInterval(() => {
         setProgress(prev => {
           const newProgress = prev + Math.random() * 15;
@@ -314,20 +342,14 @@ export const useFileUpload = () => {
         });
       }, 200);
 
-      const result = await fileService.uploadFile(file);
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       clearInterval(progressInterval);
       setProgress(100);
       
-      // Invalidar cache
-      queryClient.invalidateQueries({ queryKey: ['files'] });
-      
-      toast.success('Archivo subido exitosamente');
-      return result;
-      
+      return { success: true, filename: file.name };
     } catch (error) {
-      setProgress(0);
-      toast.error(error.message || 'Error al subir archivo');
+      console.error('Error uploading file:', error);
       throw error;
     } finally {
       setIsUploading(false);
@@ -386,26 +408,25 @@ export const useReportGeneration = () => {
 };
 
 // Hook para obtener reportes
-export const useReports = (filters = {}) => {
+export const useReports = (params = {}) => {
   return useQuery({
-    queryKey: ['reports', filters],
-    queryFn: () => reportService.getReports(filters),
+    queryKey: ['reports', params],
+    queryFn: () => reportService.getReports(params),
     staleTime: 30000,
-    retry: 1, // Solo reintentar una vez
+    retry: 1,
     onError: (error) => {
       console.error('Error fetching reports:', error);
-      // No mostrar toast de error para evitar spam
-      console.warn('Usando datos mock para reportes');
     },
   });
 };
 
-// Hook para reportes recientes
+// Hook para reportes recientes con autenticación
 export const useRecentReports = (limit = 5) => {
   return useQuery({
     queryKey: ['recent-reports', limit],
     queryFn: () => reportService.getReports({ limit, ordering: '-created_at' }),
     staleTime: 30000,
+    retry: 1,
     select: (data) => data.results?.slice(0, limit) || data.slice(0, limit) || [],
     onError: (error) => {
       console.error('Error fetching recent reports:', error);
@@ -413,12 +434,13 @@ export const useRecentReports = (limit = 5) => {
   });
 };
 
-// Hook para estadísticas del dashboard
+// Hook para estadísticas del dashboard con autenticación
 export const useDashboardStats = () => {
   return useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: dashboardService.getStats,
     staleTime: 60000,
+    retry: 1,
     onError: (error) => {
       console.error('Error fetching dashboard stats:', error);
     },
@@ -429,45 +451,32 @@ export const useDashboardStats = () => {
 export const useReportHTML = (reportId) => {
   return useQuery({
     queryKey: ['report-html', reportId],
-    queryFn: () => reportService.getReportHTML(reportId),
+    queryFn: async () => {
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/reports/${reportId}/html/`);
+      return response.text();
+    },
     enabled: !!reportId,
+    retry: 1,
     onError: (error) => {
       console.error('Error fetching report HTML:', error);
     },
   });
 };
 
-// Hook para actividad reciente (REQUERIDO POR DASHBOARD)
+
+// Hook para actividad reciente con autenticación
 export const useRecentActivity = (limit = 8) => {
   return useQuery({
     queryKey: ['recent-activity', limit],
-    queryFn: async () => {
-      try {
-        const response = await fetchWithAuth(`${API_BASE_URL}/dashboard/activity/`);
-        
-        if (response.status === 404) {
-          console.warn('⚠️ Endpoint /dashboard/activity/ no implementado, usando mock');
-          return getMockActivity(limit);
-        }
-
-        if (!response.ok) {
-          throw new Error('Error obteniendo actividad');
-        }
-
-        const data = await response.json();
-        return data.results?.slice(0, limit) || data.slice(0, limit) || [];
-        
-      } catch (error) {
-        console.error('Error fetching recent activity:', error);
-        return getMockActivity(limit);
-      }
-    },
+    queryFn: () => dashboardService.getActivity(limit),
     staleTime: 60000,
+    retry: 1,
     onError: (error) => {
       console.error('Error fetching recent activity:', error);
     },
   });
 };
+
 
 // Función auxiliar para actividad mock
 const getMockActivity = (limit) => {
@@ -501,6 +510,7 @@ const getMockActivity = (limit) => {
   return activities.slice(0, limit);
 };
 
+// Hook para mutaciones de reportes
 // Hook para mutaciones de reportes
 export const useReportMutations = () => {
   const queryClient = useQueryClient();

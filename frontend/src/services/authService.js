@@ -1,4 +1,4 @@
-// frontend/src/services/authService.js - VERSIÓN CORREGIDA
+// frontend/src/services/authService.js - CORREGIR EL PROBLEMA DE REDIRECCIÓN
 import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
@@ -91,6 +91,7 @@ axiosInstance.interceptors.response.use(
       if (!refreshToken) {
         console.error('❌ No hay refresh token disponible');
         authService.clearAuthData();
+        // CAMBIO IMPORTANTE: Redirigir a "/" en lugar de "/login"
         window.location.href = '/';
         return Promise.reject(error);
       }
@@ -117,6 +118,7 @@ axiosInstance.interceptors.response.use(
         console.error('❌ Error renovando token:', refreshError);
         processQueue(refreshError, null);
         authService.clearAuthData();
+        // CAMBIO IMPORTANTE: Redirigir a "/" en lugar de "/login"
         window.location.href = '/';
         return Promise.reject(refreshError);
       } finally {
@@ -156,19 +158,6 @@ export const authService = {
       return { user, access, refresh };
     } catch (error) {
       console.error('❌ Error en login:', error);
-      throw error;
-    }
-  },
-
-  // Registro de usuario
-  async register(userData) {
-    try {
-      console.log('📝 Registrando usuario:', userData.email);
-      const response = await axiosInstance.post('/auth/register/', userData);
-      console.log('✅ Registro exitoso');
-      return response.data;
-    } catch (error) {
-      console.error('❌ Error en registro:', error);
       throw error;
     }
   },

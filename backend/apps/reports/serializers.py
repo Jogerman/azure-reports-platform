@@ -7,31 +7,23 @@ logger = logging.getLogger(__name__)
 
 class CSVFileSerializer(serializers.ModelSerializer):
     """Serializer para archivos CSV"""
-    upload_progress = serializers.ReadOnlyField()
-    analysis_summary = serializers.SerializerMethodField()
+    file_size_mb = serializers.ReadOnlyField()
+    file_extension = serializers.ReadOnlyField()
+    is_valid_csv = serializers.ReadOnlyField()
     
     class Meta:
         model = CSVFile
         fields = [
-            'id', 'original_filename', 'file_size', 'processing_status',
-            'rows_count', 'columns_count', 'upload_date', 'processed_date',
-            'analysis_data', 'azure_blob_url', 'upload_progress', 'analysis_summary'
+            'id', 'original_filename', 'file_size', 'file_size_mb', 
+            'content_type', 'file_extension', 'is_valid_csv',
+            'processing_status', 'error_message', 'rows_count', 
+            'columns_count', 'upload_date', 'processed_date',
+            'azure_blob_url'
         ]
         read_only_fields = [
-            'id', 'processing_status', 'rows_count', 'columns_count',
-            'upload_date', 'processed_date', 'analysis_data', 'azure_blob_url'
+            'id', 'upload_date', 'processed_date', 'file_size_mb',
+            'file_extension', 'is_valid_csv', 'azure_blob_url'
         ]
-    
-    def get_analysis_summary(self, obj):
-        """Resumen del análisis para el frontend"""
-        if obj.analysis_data:
-            return {
-                'total_insights': len(obj.analysis_data.get('recommendations', [])),
-                'data_quality_score': obj.analysis_data.get('data_quality', {}).get('completeness_score', 0),
-                'has_cost_analysis': bool(obj.analysis_data.get('cost_analysis')),
-                'has_security_analysis': bool(obj.analysis_data.get('security_analysis')),
-            }
-        return None
 
 class CSVFileUploadSerializer(serializers.ModelSerializer):
     """Serializer específico para upload de CSV"""
@@ -104,66 +96,120 @@ class CSVFileUploadSerializer(serializers.ModelSerializer):
 
 class ReportSerializer(serializers.ModelSerializer):
     """Serializer para reportes"""
-    csv_file_name = serializers.CharField(source='csv_file.original_filename', read_only=True)
-    user_name = serializers.CharField(source='user.get_full_name', read_only=True)
-    analysis_summary = serializers.SerializerMethodField()
+    csv_file_details = CSVFileSerializer(source='csv_file', read_only=True)
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+    
+    # Campos calculados
+    processing_time = serializers.SerializerMethodField()
+    has_content = serializers.SerializerMethodField()
+    recommendations_count = serializers.SerializerMethodField()
+    potential_savings = serializers.SerializerMethodField()
     
     class Meta:
         model = Report
         fields = [
             'id', 'title', 'description', 'report_type', 'status',
-            'csv_file', 'csv_file_name', 'user_name', 'created_at',
-            'completed_at', 'pdf_file_url', 'html_preview_url',
-            'generation_time_seconds', 'pages_count', 'download_count',
-            'analysis_data', 'analysis_summary'
+            'created_at', 'generated_at', 'user_email', 'csv_file',
+            'csv_file_details', 'metadata', 'processing_time',
+            'has_content', 'recommendations_count', 'potential_savings'
         ]
         read_only_fields = [
-            'id', 'status', 'created_at', 'completed_at', 'pdf_file_url',
-            'html_preview_url', 'generation_time_seconds', 'pages_count',
-            'download_count', 'analysis_data'
+            'id', 'created_at', 'generated_at', 'user_email',
+            'csv_file_details', 'processing_time', 'has_content',
+            'recommendations_count', 'potential_savings'
         ]
     
-    def get_analysis_summary(self, obj):
-        """Resumen del análisis para mostrar en el frontend"""
-        if obj.analysis_data:
-            return {
-                'total_recommendations': len(obj.analysis_data.get('recommendations', [])),
-                'categories_analyzed': len(obj.analysis_data.get('categories', {})),
-                'cost_savings_identified': bool(obj.analysis_data.get('cost_analysis')),
-                'security_issues_found': obj.analysis_data.get('security_analysis', {}).get('total_security_recommendations', 0),
-            }
+    def get_processing_time(self, obj):
+        """Calcular tiempo de procesamiento"""
+        if obj.generated_at and obj.created_at:
+            delta = obj.generated_at - obj.created_at
+            return delta.total_seconds()
         return None
+    
+    def get_has_content(self, obj):
+        """Verificar si el reporte tiene contenido generado"""
+        if hasattr(obj, 'content') and obj.content:
+            return True
+        if obj.metadata and 'generated_content' in obj.metadata:
+            return True
+        return False
+    
+    def get_recommendations_count(self, obj):
+        """Obtener número de recomendaciones del CSV asociado"""
+        try:
+            if obj.csv_file and obj.csv_file.analysis_data:
+                analysis_data = obj.csv_file.analysis_data
+                
+                # Buscar en executive_summary
+                exec_summary = analysis_data.get('executive_summary', {})
+                if 'total_actions' in exec_summary:
+                    return exec_summary['total_actions']
+                
+                # Buscar directamente
+                if 'total_recommendations' in analysis_data:
+                    return analysis_data['total_recommendations']
+                
+            return 0
+        except:
+            return 0
+    
+    def get_potential_savings(self, obj):
+        """Obtener ahorros potenciales del CSV asociado"""
+        try:
+            if obj.csv_file and obj.csv_file.analysis_data:
+                analysis_data = obj.csv_file.analysis_data
+                
+                # Buscar en cost_optimization
+                cost_opt = analysis_data.get('cost_optimization', {})
+                if 'estimated_monthly_optimization' in cost_opt:
+                    return cost_opt['estimated_monthly_optimization']
+                
+                # Buscar directamente
+                if 'potential_savings' in analysis_data:
+                    return analysis_data['potential_savings']
+                
+            return 0
+        except:
+            return 0
 
 class ReportCreateSerializer(serializers.ModelSerializer):
     """Serializer para crear reportes"""
+    csv_file_id = serializers.UUIDField(write_only=True, required=False)
     
     class Meta:
         model = Report
         fields = [
-            'title', 'description', 'report_type', 'csv_file',
-            'user_prompt', 'generation_config'
+            'title', 'description', 'report_type', 'csv_file_id'
         ]
     
-    def validate_csv_file(self, value):
-        """Validar que el archivo CSV esté procesado"""
-        if value.processing_status != 'completed':
-            raise serializers.ValidationError(
-                "El archivo CSV debe estar completamente procesado antes de generar un reporte"
-            )
+    def validate_csv_file_id(self, value):
+        """Validar que el CSV file existe y pertenece al usuario"""
+        if value:
+            user = self.context['request'].user
+            try:
+                csv_file = CSVFile.objects.get(id=value, user=user)
+                if csv_file.processing_status != 'completed':
+                    raise serializers.ValidationError(
+                        "El archivo CSV aún está siendo procesado"
+                    )
+                return value
+            except CSVFile.DoesNotExist:
+                raise serializers.ValidationError(
+                    "Archivo CSV no encontrado o no tienes permisos"
+                )
         return value
     
     def create(self, validated_data):
-        """Crear reporte y iniciar generación"""
-        user = self.context['request'].user
+        """Crear reporte con CSV file si se proporciona"""
+        csv_file_id = validated_data.pop('csv_file_id', None)
+        csv_file = None
+        
+        if csv_file_id:
+            csv_file = CSVFile.objects.get(id=csv_file_id)
         
         report = Report.objects.create(
-            user=user,
-            status='generating',
+            csv_file=csv_file,
             **validated_data
         )
-        
-        # Iniciar generación asíncrona
-        from .tasks import generate_report
-        generate_report.delay(report.id)
         
         return report

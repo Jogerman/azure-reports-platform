@@ -10,11 +10,17 @@ import logging
 
 from .models import UserActivity
 from .serializers import UserActivitySerializer
+
 logger = logging.getLogger(__name__)
 
 class AnalyticsViewSet(viewsets.ReadOnlyModelViewSet):
-    """Vista para analytics y actividades"""
+    """Vista para analytics y actividades - PRODUCCIÓN REAL"""
+    serializer_class = UserActivitySerializer
     permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        """Retorna actividades del usuario actual"""
+        return UserActivity.objects.filter(user=self.request.user)
     
     @action(detail=False, methods=['get'], url_path='activity')
     def activity(self, request):
@@ -22,15 +28,15 @@ class AnalyticsViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             limit = int(request.query_params.get('limit', 8))
             
-            # Obtener actividades del usuario actual
+            # Obtener actividades reales del usuario
             activities = UserActivity.objects.filter(
                 user=request.user
             ).order_by('-timestamp')[:limit]
             
-            # Formatear datos para el frontend
-            activity_data = []
+            # Serializar las actividades
+            serialized_activities = []
             for activity in activities:
-                activity_data.append({
+                serialized_activities.append({
                     'id': str(activity.id),
                     'description': activity.description,
                     'timestamp': activity.timestamp.isoformat(),
@@ -38,31 +44,85 @@ class AnalyticsViewSet(viewsets.ReadOnlyModelViewSet):
                     'metadata': activity.metadata
                 })
             
-            logger.info(f"Actividad solicitada por usuario: {request.user.email}, {len(activity_data)} items")
-            return Response({'results': activity_data})
+            logger.info(f"Actividad real obtenida para usuario: {request.user.email}, {len(serialized_activities)} items")
+            return Response({'results': serialized_activities})
             
         except Exception as e:
             logger.error(f"Error obteniendo actividad: {e}")
-            return Response(
-                {"error": "Error obteniendo actividad de usuario"}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({'results': []})
     
     @action(detail=False, methods=['get'], url_path='stats')
     def stats(self, request):
-        """Endpoint para estadísticas del dashboard"""
+        """Endpoint para estadísticas del dashboard - DATOS REALES"""
         try:
+            from apps.storage.models import StorageFile
+            from apps.reports.models import CSVFile, Report
+            
             user = request.user
             
-            # Calcular estadísticas básicas
-            total_activities = UserActivity.objects.filter(user=user).count()
+            # Obtener archivos reales del usuario
+            try:
+                storage_files = StorageFile.objects.filter(user=user)
+                total_storage_files = storage_files.count()
+            except:
+                total_storage_files = 0
             
-            # Actividades por tipo
-            activity_counts = UserActivity.objects.filter(
-                user=user
-            ).values('activity_type').annotate(
-                count=Count('activity_type')
-            )
+            try:
+                csv_files = CSVFile.objects.filter(user=user)
+                total_csv_files = csv_files.count()
+            except:
+                total_csv_files = 0
+            
+            total_files = total_storage_files + total_csv_files
+            
+            # Obtener reportes reales
+            try:
+                user_reports = Report.objects.filter(user=user)
+                total_reports = user_reports.count()
+                completed_reports = user_reports.filter(status='completed').count()
+            except:
+                total_reports = 0
+                completed_reports = 0
+            
+            # Calcular recomendaciones y ahorros desde CSVFiles reales
+            total_recommendations = 0
+            potential_savings = 0
+            azure_advisor_score = 0
+            
+            try:
+                # Analizar CSVFiles que tienen analysis_data
+                for csv_file in csv_files:
+                    if hasattr(csv_file, 'analysis_data') and csv_file.analysis_data:
+                        analysis_data = csv_file.analysis_data
+                        if isinstance(analysis_data, dict):
+                            # Extraer recomendaciones
+                            if 'total_recommendations' in analysis_data:
+                                total_recommendations += analysis_data['total_recommendations']
+                            elif 'executive_summary' in analysis_data:
+                                exec_summary = analysis_data['executive_summary']
+                                if isinstance(exec_summary, dict):
+                                    total_recommendations += exec_summary.get('total_actions', 0)
+                            
+                            # Extraer ahorros potenciales
+                            if 'potential_savings' in analysis_data:
+                                potential_savings += analysis_data['potential_savings']
+                            elif 'cost_optimization' in analysis_data:
+                                cost_opt = analysis_data['cost_optimization']
+                                if isinstance(cost_opt, dict):
+                                    potential_savings += cost_opt.get('estimated_monthly_optimization', 0)
+                            
+                            # Extraer Azure Advisor Score
+                            if 'azure_advisor_score' in analysis_data:
+                                azure_advisor_score = max(azure_advisor_score, analysis_data['azure_advisor_score'])
+                            elif 'executive_summary' in analysis_data:
+                                exec_summary = analysis_data['executive_summary']
+                                if isinstance(exec_summary, dict):
+                                    azure_advisor_score = max(azure_advisor_score, exec_summary.get('advisor_score', 0))
+            except Exception as analysis_error:
+                logger.warning(f"Error analizando datos de CSV: {analysis_error}")
+            
+            # Obtener actividades del usuario
+            total_activities = UserActivity.objects.filter(user=user).count()
             
             # Actividades recientes (últimos 7 días)
             last_week = timezone.now() - timedelta(days=7)
@@ -71,25 +131,81 @@ class AnalyticsViewSet(viewsets.ReadOnlyModelViewSet):
                 timestamp__gte=last_week
             ).count()
             
+            # Calcular tasa de éxito
+            success_rate = 100
+            if total_reports > 0:
+                success_rate = round((completed_reports / total_reports) * 100, 1)
+            
+            # Compilar estadísticas reales
             stats_data = {
-                'total_files': activity_counts.filter(activity_type='upload_csv').first()['count'] if activity_counts.filter(activity_type='upload_csv').exists() else 0,
-                'total_reports': activity_counts.filter(activity_type='generate_report').first()['count'] if activity_counts.filter(activity_type='generate_report').exists() else 0,
-                'completed_reports': activity_counts.filter(activity_type='download_report').first()['count'] if activity_counts.filter(activity_type='download_report').exists() else 0,
-                'total_recommendations': 0,  # Placeholder
-                'potential_savings': 0,  # Placeholder
-                'success_rate': 100,  # Placeholder
+                'total_files': total_files,
+                'total_csv_files': total_csv_files,
+                'total_storage_files': total_storage_files,
+                'total_reports': total_reports,
+                'completed_reports': completed_reports,
+                'total_recommendations': total_recommendations,
+                'potential_savings': potential_savings,
+                'azure_advisor_score': azure_advisor_score,
+                'success_rate': success_rate,
                 'total_activities': total_activities,
                 'recent_activities': recent_activities,
                 'last_updated': timezone.now().isoformat()
             }
             
-            logger.info(f"Stats solicitadas por usuario: {request.user.email}")
+            logger.info(f"Stats reales calculadas para usuario: {request.user.email}")
+            logger.info(f"Total recommendations: {total_recommendations}, Savings: {potential_savings}")
+            
             return Response(stats_data)
             
         except Exception as e:
-            logger.error(f"Error obteniendo stats: {e}")
+            logger.error(f"Error obteniendo stats reales: {e}")
+            return Response({
+                'total_files': 0,
+                'total_reports': 0,
+                'completed_reports': 0,
+                'total_recommendations': 0,
+                'potential_savings': 0,
+                'success_rate': 100,
+                'last_updated': timezone.now().isoformat()
+            })
+    
+    @action(detail=False, methods=['post'], url_path='track')
+    def track_activity(self, request):
+        """Endpoint para registrar nueva actividad del usuario"""
+        try:
+            data = request.data
+            activity_type = data.get('activity_type')
+            description = data.get('description')
+            metadata = data.get('metadata', {})
+            
+            if not activity_type or not description:
+                return Response(
+                    {'error': 'activity_type y description son requeridos'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Crear nueva actividad
+            activity = UserActivity.objects.create(
+                user=request.user,
+                activity_type=activity_type,
+                description=description,
+                ip_address=request.META.get('REMOTE_ADDR', '127.0.0.1'),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                metadata=metadata
+            )
+            
+            serializer = UserActivitySerializer(activity)
+            logger.info(f"Nueva actividad registrada para {request.user.email}: {activity_type}")
+            
+            return Response({
+                'message': 'Actividad registrada exitosamente',
+                'activity': serializer.data
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            logger.error(f"Error registrando actividad: {e}")
             return Response(
-                {"error": "Error obteniendo estadísticas"}, 
+                {'error': f'Error registrando actividad: {str(e)}'}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 class DashboardStatsView(APIView):

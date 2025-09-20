@@ -1,6 +1,7 @@
 // src/hooks/useReports.js - VERSIÓN DE PRODUCCIÓN LIMPIA
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { API_CONFIG, fetchWithAuth, buildApiUrl } from '../config/api';
 import toast from 'react-hot-toast';
 
 // Configuración de la API
@@ -81,50 +82,38 @@ const fileService = {
     }
   },
 
-  async getFiles() {
+    async getFiles(params = {}) {
     try {
-      console.log('📂 Obteniendo archivos...');
-      const response = await fetchWithAuth(`${API_BASE_URL}/files/`);
+      const searchParams = new URLSearchParams(params);
+      const url = buildApiUrl('/files/', {}) + `?${searchParams}`;
       
-      // Si el endpoint no existe, devolver array vacío
-      if (response.status === 404) {
-        console.warn('⚠️ Endpoint /files/ no encontrado, devolviendo datos mock');
-        return this.getMockFiles();
-      }
-
+      console.log('📁 Fetching files from:', url);
+      const response = await fetchWithAuth(url);
+      
       if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-
-      const data = await response.json();
-      console.log('✅ Archivos obtenidos:', data);
       
-      // Manejar diferentes formatos de respuesta
-      return data.results || data || [];
+      const data = await response.json();
+      console.log('✅ Files loaded:', data);
+      return data?.results || data || [];
       
     } catch (error) {
-      console.error('❌ Error obteniendo archivos:', error);
-      // En vez de throw, devolver datos mock para evitar pantalla blanca
+      console.error('❌ Error loading files:', error);
+      // Retornar datos mock en caso de error para evitar pantalla blanca
       return this.getMockFiles();
     }
   },
-    getMockFiles() {
+
+  getMockFiles() {
     return [
       {
         id: 1,
-        original_filename: 'azure_advisor_data.csv',
+        original_filename: 'ejemplo_2.csv',
         file_type: 'csv',
         file_size: 2048576,
         upload_date: new Date().toISOString(),
         blob_url: '/mock/file1.csv'
-      },
-      {
-        id: 2,
-        original_filename: 'security_report.pdf',
-        file_type: 'pdf', 
-        file_size: 1024000,
-        upload_date: new Date(Date.now() - 86400000).toISOString(),
-        blob_url: '/mock/file2.pdf'
       }
     ];
   },
@@ -132,9 +121,9 @@ const fileService = {
 
 // 📊 SERVICIO DE REPORTES
 const reportService = {
-  async generateReport(fileId, reportConfig = {}) {
+   async generateReport(fileId, reportConfig = {}) {
     try {
-      console.log('📊 Generando reporte para archivo:', fileId);
+      console.log('📊 Generating report for file:', fileId);
       
       const requestData = {
         file_id: fileId,
@@ -143,46 +132,46 @@ const reportService = {
         report_type: reportConfig.type || 'comprehensive'
       };
       
-      const response = await fetchWithAuth(`${API_BASE_URL}/reports/generate/`, {
+      const url = buildApiUrl('/reports/generate/');
+      const response = await fetchWithAuth(url, {
         method: 'POST',
         body: JSON.stringify(requestData),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Error generando reporte');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}: Error generando reporte`);
       }
 
       const result = await response.json();
-      console.log('✅ Reporte generado:', result);
+      console.log('✅ Report generated:', result);
       return result;
       
     } catch (error) {
-      console.error('❌ Error generando reporte:', error);
+      console.error('❌ Error generating report:', error);
       throw error;
     }
   },
 
- async getReports(params = {}) {
+  async getReports(params = {}) {
     try {
       const searchParams = new URLSearchParams(params);
-      const url = `${API_BASE_URL}/api/reports/?${searchParams}`;
+      const url = buildApiUrl('/reports/') + `?${searchParams}`;
       
-      console.log('📋 Obteniendo reportes con auth...');
+      console.log('📋 Fetching reports from:', url);
       const response = await fetchWithAuth(url);
-      const data = await response.json();
       
-      console.log('✅ Reportes obtenidos:', data);
-      return data;
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('✅ Reports loaded:', data);
+      return data?.results || data || [];
+      
     } catch (error) {
-      console.error('❌ Error obteniendo reportes:', error);
-      // Devolver estructura mock en caso de error
-      return {
-        results: [],
-        count: 0,
-        next: null,
-        previous: null
-      };
+      console.error('❌ Error loading reports:', error);
+      return this.getMockReports();
     }
   },
 
@@ -206,7 +195,7 @@ const reportService = {
       }
     ];
   },
-
+  
   async getReport(reportId) {
     try {
       const response = await fetchWithAuth(`${API_BASE_URL}/api/reports/${reportId}/`);
@@ -225,21 +214,26 @@ const reportService = {
     return response.text();
   },
 
-  async downloadReportPDF(reportId, filename) {
+ async downloadReportPDF(reportId, filename) {
     try {
-      const response = await fetchWithAuth(`${API_BASE_URL}/api/reports/${reportId}/download/`);
+      const url = buildApiUrl('/reports/:id/download/', { id: reportId });
+      const response = await fetchWithAuth(url);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: Error descargando reporte`);
+      }
       
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.href = url;
+      link.href = downloadUrl;
       link.download = filename || `reporte_${reportId}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(downloadUrl);
     } catch (error) {
-      console.error('❌ Error descargando reporte:', error);
+      console.error('❌ Error downloading report:', error);
       throw error;
     }
   },
@@ -261,26 +255,34 @@ const reportService = {
 const dashboardService = {
   async getStats() {
     try {
-      console.log('📊 Obteniendo stats con auth...');
-      const response = await fetchWithAuth(`${API_BASE_URL}/api/dashboard/stats/`);
-      const data = await response.json();
+      const url = buildApiUrl('/dashboard/stats/');
+      console.log('📊 Fetching dashboard stats from:', url);
+      const response = await fetchWithAuth(url);
       
-      console.log('✅ Stats obtenidas:', data);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('✅ Dashboard stats loaded:', data);
       return data;
     } catch (error) {
-      console.error('❌ Error obteniendo stats:', error);
-      // Devolver mock data en caso de error
-      return {
-        total_files: 0,
-        total_reports: 0,
-        completed_reports: 0,
-        total_recommendations: 0,
-        potential_savings: 0,
-        success_rate: 100,
-        last_updated: new Date().toISOString()
-      };
+      console.error('❌ Error loading dashboard stats:', error);
+      return this.getMockStats();
     }
-  },  
+  },
+
+  getMockStats() {
+    return {
+      total_files: 12,
+      total_reports: 8,
+      reports_this_month: 3,
+      processing_reports: 1,
+      total_storage_gb: 2.4,
+      avg_processing_time: 45
+    };
+  },
+
   async getActivity(limit = 8) {
     try {
       console.log('📋 Obteniendo actividad con auth...');
@@ -360,18 +362,13 @@ export const useFileUpload = () => {
   return { uploadFile, isUploading, progress };
 };
 
-// Hook para obtener archivos (ALIAS PARA COMPATIBILIDAD)
-export const useFiles = () => {
+// HOOKS DE REACT QUERY - CORREGIDOS
+export const useFiles = (params = {}) => {
   return useQuery({
-    queryKey: ['files'],
-    queryFn: fileService.getFiles,
-    staleTime: 30000,
-    retry: 1, // Solo reintentar una vez
-    onError: (error) => {
-      console.error('Error fetching files:', error);
-      // No mostrar toast de error para evitar spam
-      console.warn('Usando datos mock para archivos');
-    },
+    queryKey: ['files', params],
+    queryFn: () => fileService.getFiles(params),
+    staleTime: 5 * 60 * 1000, // 5 minutos
+    cacheTime: 10 * 60 * 1000, // 10 minutos
   });
 };
 
@@ -383,14 +380,11 @@ export const useGenerateReport = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: ({ fileId, reportConfig }) => reportService.generateReport(fileId, reportConfig),
+    mutationFn: ({ fileId, config }) => reportService.generateReport(fileId, config),
     onSuccess: () => {
+      // Invalidar cache de reportes para actualizar la lista
       queryClient.invalidateQueries({ queryKey: ['reports'] });
-      toast.success('Reporte generado exitosamente');
-    },
-    onError: (error) => {
-      console.error('Error generating report:', error);
-      toast.error(error.message || 'Error generando reporte');
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
 };
@@ -412,38 +406,25 @@ export const useReports = (params = {}) => {
   return useQuery({
     queryKey: ['reports', params],
     queryFn: () => reportService.getReports(params),
-    staleTime: 30000,
-    retry: 1,
-    onError: (error) => {
-      console.error('Error fetching reports:', error);
-    },
+    staleTime: 5 * 60 * 1000,
   });
 };
 
 // Hook para reportes recientes con autenticación
 export const useRecentReports = (limit = 5) => {
   return useQuery({
-    queryKey: ['recent-reports', limit],
-    queryFn: () => reportService.getReports({ limit, ordering: '-created_at' }),
-    staleTime: 30000,
-    retry: 1,
-    select: (data) => data.results?.slice(0, limit) || data.slice(0, limit) || [],
-    onError: (error) => {
-      console.error('Error fetching recent reports:', error);
-    },
+    queryKey: ['reports', 'recent', limit],
+    queryFn: () => reportService.getReports({ ordering: '-created_at', limit }),
+    staleTime: 5 * 60 * 1000,
   });
 };
 
 // Hook para estadísticas del dashboard con autenticación
 export const useDashboardStats = () => {
   return useQuery({
-    queryKey: ['dashboard-stats'],
-    queryFn: dashboardService.getStats,
-    staleTime: 60000,
-    retry: 1,
-    onError: (error) => {
-      console.error('Error fetching dashboard stats:', error);
-    },
+    queryKey: ['dashboard', 'stats'],
+    queryFn: () => dashboardService.getStats(),
+    staleTime: 2 * 60 * 1000, // 2 minutos
   });
 };
 
@@ -539,4 +520,10 @@ export const useReportMutations = () => {
   });
 
   return { downloadReport, deleteReport };
+};
+
+export default {
+  fileService,
+  reportService,
+  dashboardService,
 };

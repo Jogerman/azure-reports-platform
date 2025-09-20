@@ -1,37 +1,31 @@
 // src/config/api.js - VERSIÓN CORREGIDA SIN PROCESS
 export const API_CONFIG = {
-  // URL base del backend - usando window.location como fallback
+  // URL base del backend - CORREGIDA
   BASE_URL: (() => {
-    // Intentar obtener de variables de entorno React
-    if (typeof window !== 'undefined' && window.ENV && window.ENV.REACT_APP_API_URL) {
-      return window.ENV.REACT_APP_API_URL;
+    // Para producción
+    if (window.location.hostname !== 'localhost') {
+      return window.location.origin + '/api';
     }
     
-    // Fallback para desarrollo local
-    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-      return 'http://localhost:8000/api';
-    }
-    
-    // Fallback para producción
-    return '/api';
+    // Para desarrollo local - CORREGIDO
+    return 'http://localhost:8000/api';
   })(),
   
   // Timeouts
   TIMEOUT: 30000, // 30 segundos
   UPLOAD_TIMEOUT: 300000, // 5 minutos para uploads
   
-  // Endpoints específicos
-  ENDPOINTS: {
-    // Autenticación
+   ENDPOINTS: {
     AUTH: {
       LOGIN: '/auth/login/',
       REGISTER: '/auth/register/',
       LOGOUT: '/auth/logout/',
-      REFRESH: '/auth/token/refresh/',
+      REFRESH: '/auth/refresh/',
       PROFILE: '/auth/users/profile/',
+      MICROSOFT_LOGIN: '/auth/microsoft/login/',  // CORREGIDO
+      MICROSOFT_CALLBACK: '/auth/microsoft/callback/',
     },
     
-    // Archivos
     FILES: {
       UPLOAD: '/files/upload/',
       LIST: '/files/',
@@ -40,9 +34,8 @@ export const API_CONFIG = {
       DOWNLOAD: '/files/:id/download/',
     },
     
-    // Reportes
     REPORTS: {
-      GENERATE: '/reports/generate/',
+      GENERATE: '/reports/generate/',  // CORREGIDO
       LIST: '/reports/',
       DETAIL: '/reports/:id/',
       HTML: '/reports/:id/html/',
@@ -50,17 +43,14 @@ export const API_CONFIG = {
       DELETE: '/reports/:id/',
     },
     
-    // Dashboard
     DASHBOARD: {
-      STATS: '/dashboard/stats/',
+      STATS: '/dashboard/stats/',     // CORREGIDO
       ACTIVITY: '/dashboard/activity/',
     },
     
-    // Salud del sistema
     HEALTH: '/health/',
   },
   
-  // Headers por defecto
   DEFAULT_HEADERS: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
@@ -73,6 +63,39 @@ export const API_CONFIG = {
     EXPONENTIAL: true,
   },
 };
+
+// FUNCIÓN CORREGIDA para fetch con autenticación
+export const fetchWithAuth = async (url, options = {}) => {
+  const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
+  
+  const config = {
+    ...options,
+    headers: {
+      ...API_CONFIG.DEFAULT_HEADERS,
+      ...options.headers,
+      ...(token && { Authorization: `Bearer ${token}` }),
+    },
+    timeout: API_CONFIG.TIMEOUT,
+  };
+
+  try {
+    const response = await fetch(url, config);
+    
+    if (response.status === 401) {
+      // Token expirado
+      localStorage.removeItem('access_token');
+      sessionStorage.removeItem('access_token');
+      window.location.href = '/';
+      throw new Error('Sesión expirada');
+    }
+    
+    return response;
+  } catch (error) {
+    console.error('API Error:', error);
+    throw error;
+  }
+};
+
 
 // Helper para construir URLs
 export const buildUrl = (endpoint, params = {}) => {

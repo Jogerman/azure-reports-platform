@@ -218,6 +218,17 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
     'x-microsoft-auth-token',
 ]
+# Métodos HTTP permitidos
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+# CONFIGURACIÓN ADICIONAL PARA PRODUCCIÓN
+SECURE_CROSS_ORIGIN_OPENER_POLICY = None
 
 # Azure Blob Storage Settings
 USE_AZURE_STORAGE = config('USE_AZURE_STORAGE', default=True, cast=bool)

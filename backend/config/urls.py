@@ -1,4 +1,4 @@
-# backend/config/urls.py
+# backend/config/urls.py - CONFIGURACIÓN CORREGIDA
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
@@ -24,20 +24,17 @@ urlpatterns = [
     # Health check
     path('api/health/', health_check, name='health-check'),
     
-    # API Routes
+    # API Routes - CORREGIDAS
     path('api/auth/', include('apps.authentication.urls')),
     path('api/reports/', include('apps.reports.urls')),
     path('api/files/', include('apps.storage.urls')),
     path('api/dashboard/', include('apps.analytics.urls')),
     
-    # Traditional Django views (para templates) - AGREGAR ESTA LÍNEA
-    path('auth/', include('apps.authentication.traditional_urls')),
-    
     # Root API
     path('api/', include(router.urls)),
 ]
 
-# Servir archivos estáticos en desarrollo
+# Servir archivos estáticos
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

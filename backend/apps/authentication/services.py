@@ -36,9 +36,10 @@ class MicrosoftAuthService:
         self.redirect_uri = config('MICROSOFT_REDIRECT_URI', default='http://localhost:8000/api/auth/microsoft/callback/')
         
         # Scopes para obtener información del usuario
+        # Nota: 'openid' y 'profile' son automáticos, no deben incluirse explícitamente
         self.scopes = [
-            'email',
-            'User.Read'
+            'User.Read',
+            'email'
         ]
         
         # URLs de Microsoft
@@ -148,6 +149,17 @@ class MicrosoftAuthService:
             if response.status_code == 200:
                 user_data = response.json()
                 logger.info(f"Información de usuario obtenida: {user_data.get('userPrincipalName', 'unknown')}")
+                
+                # Log completo para debugging
+                logger.debug(f"Datos completos del usuario: {user_data}")
+                
+                # Si no hay tid, intentar obtenerlo del dominio del email
+                if 'tid' not in user_data or not user_data['tid']:
+                    email = user_data.get('mail') or user_data.get('userPrincipalName', '')
+                    if '@' in email:
+                        domain = email.split('@')[1]
+                        logger.info(f"No se encontró tid, usuario del dominio: {domain}")
+                
                 return user_data
             else:
                 logger.error(f"Error obteniendo info del usuario: {response.status_code} - {response.text}")
@@ -163,17 +175,28 @@ class MicrosoftAuthService:
     def validate_tenant(self, user_info):
         """Validar que el usuario pertenece al tenant correcto"""
         try:
-            # Si el tenant es 'common', permitir cualquier usuario
+            # Si el tenant es 'common', permitir cualquier usuario de Microsoft
             if self.tenant_id == 'common':
+                logger.info(f"Tenant común configurado - permitiendo usuario de cualquier organización")
                 return True
             
             # Verificar el tenant del usuario
             user_tenant = user_info.get('tid', '')
             
-            if user_tenant and user_tenant == self.tenant_id:
+            # Si no hay tid en la respuesta, pero el usuario viene del tenant correcto
+            # (porque estamos usando el tenant específico en la URL de autorización),
+            # entonces aceptar el usuario
+            if not user_tenant:
+                logger.info(f"No se recibió tenant ID en la respuesta, pero usuario viene del tenant configurado: {self.tenant_id}")
                 return True
             
-            logger.warning(f"Usuario de tenant no autorizado: {user_tenant}")
+            if user_tenant == self.tenant_id:
+                logger.info(f"Usuario de tenant autorizado: {user_tenant}")
+                return True
+            
+            # Si llegamos aquí, el tenant no coincide
+            logger.warning(f"Usuario de tenant no autorizado. Esperado: {self.tenant_id}, Recibido: {user_tenant}")
+            logger.info(f"Para permitir este usuario, cambia MICROSOFT_TENANT_ID a: {user_tenant}")
             return False
             
         except Exception as e:

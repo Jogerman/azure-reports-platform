@@ -14,6 +14,7 @@ import History from './pages/History';
 import Storage from './pages/Storage';
 import Settings from './pages/Settings';
 import Profile from './pages/Profile';
+import MicrosoftCallback from './pages/MicrosoftCallback';
 
 // Componentes
 import Layout from './components/common/Layout';
@@ -57,6 +58,7 @@ function App() {
                 <Route path="storage" element={<Storage />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="profile" element={<Profile />} />
+                <Route path="/auth/callback" element={<MicrosoftCallback />} />
               </Route>
 
               {/* Ruta 404 */}

@@ -308,7 +308,7 @@ def microsoft_login(request):
         return redirect('auth:login')
 
 def microsoft_callback(request):
-    """Callback para Microsoft OAuth"""
+    """Callback para Microsoft OAuth - NO USAR PARA REACT, usar microsoft_callback_api"""
     auth_code = request.GET.get('code')
     state = request.GET.get('state')
     error = request.GET.get('error')
@@ -317,14 +317,12 @@ def microsoft_callback(request):
     # Manejar errores de OAuth
     if error:
         if error == 'access_denied':
-            messages.warning(request, 'Acceso cancelado. Puedes intentar de nuevo.')
+            return redirect('http://localhost:5173/?error=access_denied')
         else:
-            messages.error(request, f'Error de autenticación: {error_description or error}')
-        return redirect('auth:login')
+            return redirect(f'http://localhost:5173/?error={error}')
     
     if not auth_code:
-        messages.error(request, 'Código de autorización faltante.')
-        return redirect('auth:login')
+        return redirect('http://localhost:5173/?error=missing_code')
     
     try:
         from .services import MicrosoftAuthService
@@ -332,38 +330,39 @@ def microsoft_callback(request):
         ms_auth_service = MicrosoftAuthService(request)
         
         if not ms_auth_service.is_configured():
-            messages.error(request, 'Microsoft OAuth no está configurado.')
-            return redirect('auth:login')
+            return redirect('http://localhost:5173/?error=not_configured')
         
         # Obtener token
-        logger.info(f"Procesando callback con code y state recibido")
+        logger.info(f"Procesando callback con código de autorización")
         token_response = ms_auth_service.get_token_from_code(auth_code, state)
         
         if not token_response or 'access_token' not in token_response:
-            error_msg = token_response.get('error_description', 'Error desconocido') if token_response else 'Token inválido'
-            messages.error(request, f'Error al obtener el token de acceso: {error_msg}')
-            return redirect('auth:login')
+            error_msg = token_response.get('error_description', 'Token inválido') if token_response else 'Token inválido'
+            logger.error(f"Error obteniendo token: {error_msg}")
+            return redirect(f'http://localhost:5173/?error=token_error&description={error_msg}')
         
         # Obtener información del usuario
         user_info = ms_auth_service.get_user_info(token_response['access_token'])
         
         if not user_info:
-            messages.error(request, 'Error al obtener la información del usuario desde Microsoft.')
-            return redirect('auth:login')
+            logger.error("Error obteniendo información del usuario")
+            return redirect('http://localhost:5173/?error=user_info_error')
         
         # Validar tenant si está configurado
         if not ms_auth_service.validate_tenant(user_info):
-            messages.error(
-                request, 
-                'Tu cuenta no pertenece a la organización autorizada para usar esta aplicación.'
-            )
-            return redirect('auth:login')
+            logger.warning("Usuario de tenant no autorizado")
+            return redirect('http://localhost:5173/?error=invalid_tenant')
         
         # Crear o actualizar usuario
         user = ms_auth_service.create_or_update_user(user_info)
         
         if user:
-            login(request, user)
+            # Generar tokens JWT para el frontend
+            from rest_framework_simplejwt.tokens import RefreshToken
+            
+            refresh = RefreshToken.for_user(user)
+            access_token = str(refresh.access_token)
+            refresh_token = str(refresh)
             
             # Actualizar último método de login
             if hasattr(user, 'update_last_login_provider'):
@@ -372,24 +371,20 @@ def microsoft_callback(request):
                 user.last_login_provider = 'microsoft'
                 user.save(update_fields=['last_login_provider'])
             
-            messages.success(
-                request, 
-                f'¡Bienvenido, {user.get_full_name() if hasattr(user, "get_full_name") else user.username}! Autenticado con Microsoft.'
-            )
-            
-            # Redireccionar a dashboard
-            return redirect('dashboard:index')
+            # Redirigir al frontend con los tokens
+            redirect_url = f'http://localhost:5173/auth/callback?access_token={access_token}&refresh_token={refresh_token}&user_id={user.id}'
+            logger.info(f"Login exitoso para usuario: {user.email}")
+            return redirect(redirect_url)
         else:
-            messages.error(request, 'Error al procesar tu cuenta. Contacta al administrador.')
-            return redirect('auth:login')
+            logger.error("Error creando o actualizando usuario")
+            return redirect('http://localhost:5173/?error=user_creation_error')
             
     except ImportError:
-        messages.error(request, 'Microsoft OAuth no está disponible.')
-        return redirect('auth:login')
+        logger.error("MSAL no está disponible en callback")
+        return redirect('http://localhost:5173/?error=msal_not_available')
     except Exception as e:
         logger.error(f"Error inesperado en callback de Microsoft: {e}")
-        messages.error(request, 'Error interno del servidor. Inténtalo de nuevo.')
-        return redirect('auth:login')
+        return redirect('http://localhost:5173/?error=server_error')
 
 @never_cache
 def register_view(request):

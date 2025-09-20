@@ -1,65 +1,89 @@
+// frontend/src/pages/MicrosoftCallback.jsx - VERSIÓN CORREGIDA
 import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
-import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import Loading from '../components/common/Loading';
 
 const MicrosoftCallback = () => {
+  const location = useLocation();
+  const { updateUser } = useAuth();
   const [status, setStatus] = useState('processing');
-  const [message, setMessage] = useState('Procesando autenticación...');
-  const { login, updateUser } = useAuth();
+  const [message, setMessage] = useState('Procesando autenticación con Microsoft...');
 
   useEffect(() => {
-    const handleCallback = async () => {
+    const processCallback = async () => {
       try {
-        // Extraer parámetros de la URL actual
-        const urlParams = new URLSearchParams(window.location.search);
+        // Obtener parámetros de la URL
+        const urlParams = new URLSearchParams(location.search);
         const accessToken = urlParams.get('access_token');
         const refreshToken = urlParams.get('refresh_token');
         const userId = urlParams.get('user_id');
         const error = urlParams.get('error');
 
-        // Verificar si hay errores
-        if (error) {
-          const errorMessages = {
-            'access_denied': 'Acceso cancelado por el usuario',
-            'invalid_tenant': 'Tu organización no está autorizada para usar esta aplicación',
-            'token_error': 'Error al obtener los tokens de acceso',
-            'user_info_error': 'Error al obtener la información del usuario',
-            'user_creation_error': 'Error al crear la cuenta de usuario',
-            'not_configured': 'Microsoft OAuth no está configurado correctamente',
-            'msal_not_available': 'Servicio de Microsoft no disponible',
-            'server_error': 'Error interno del servidor'
-          };
+        console.log('🔄 Procesando callback de Microsoft:', {
+          hasAccessToken: !!accessToken,
+          hasRefreshToken: !!refreshToken,
+          hasUserId: !!userId,
+          error
+        });
 
+        // Manejar errores
+        if (error) {
+          console.error('❌ Error en callback de Microsoft:', error);
           setStatus('error');
-          setMessage(errorMessages[error] || `Error: ${error}`);
+          
+          const errorMessages = {
+            'access_denied': 'Acceso denegado. La autenticación fue cancelada.',
+            'token_error': 'Error obteniendo token de autenticación.',
+            'user_info_error': 'Error obteniendo información del usuario.',
+            'invalid_tenant': 'Tu organización no tiene acceso a esta aplicación.',
+            'not_configured': 'Microsoft OAuth no está configurado correctamente.',
+            'server_error': 'Error interno del servidor.'
+          };
+          
+          setMessage(errorMessages[error] || `Error desconocido: ${error}`);
+          
+          // Redirigir al login después de 3 segundos
+          setTimeout(() => {
+            window.location.href = '/?error=' + error;
+          }, 3000);
+          return;
+        }
+
+        // Validar que tenemos todos los datos necesarios
+        if (!accessToken || !refreshToken || !userId) {
+          console.error('❌ Datos incompletos en callback:', {
+            accessToken: !!accessToken,
+            refreshToken: !!refreshToken,
+            userId: !!userId
+          });
+          
+          setStatus('error');
+          setMessage('Datos de autenticación incompletos. Por favor, inténtalo de nuevo.');
           
           setTimeout(() => {
-            window.location.href = '/';
+            window.location.href = '/?error=incomplete_data';
           }, 3000);
           return;
         }
 
-        // Verificar que tenemos todos los tokens necesarios
-        if (!accessToken || !refreshToken || !userId) {
-          setStatus('error');
-          setMessage('Tokens de autenticación faltantes');
-          setTimeout(() => {
-            window.location.href = '/';
-          }, 3000);
-          return;
-        }
+        console.log('✅ Datos de autenticación recibidos correctamente');
 
-        // Guardar tokens en localStorage para persistencia
+        // Guardar tokens en localStorage
         localStorage.setItem('access_token', accessToken);
         localStorage.setItem('refresh_token', refreshToken);
         localStorage.setItem('user_id', userId);
         localStorage.setItem('auth_method', 'microsoft');
         localStorage.setItem('auth_timestamp', Date.now().toString());
 
+        setMessage('Obteniendo información del usuario...');
+
         // Verificar el token con el backend y obtener datos del usuario
         try {
-          const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/auth/users/`, {
+          const apiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+          
+          console.log('🔍 Verificando usuario con backend...');
+          const response = await fetch(`${apiUrl}/api/auth/users/profile/`, {
             headers: {
               'Authorization': `Bearer ${accessToken}`,
               'Content-Type': 'application/json',
@@ -68,6 +92,7 @@ const MicrosoftCallback = () => {
 
           if (response.ok) {
             const userData = await response.json();
+            console.log('✅ Datos de usuario obtenidos del backend:', userData);
             
             // Guardar información del usuario
             localStorage.setItem('user_data', JSON.stringify(userData));
@@ -76,22 +101,24 @@ const MicrosoftCallback = () => {
             updateUser(userData);
             
             setStatus('success');
-            setMessage('Autenticación exitosa. Redirigiendo...');
+            setMessage('Autenticación exitosa. Redirigiendo al dashboard...');
             
-            // Redirigir al dashboard de la app después de 1.5 segundos
+            // Redirigir al dashboard después de 1.5 segundos
             setTimeout(() => {
               window.location.href = '/app';
             }, 1500);
-          } else {
-            // Si la verificación falla, aún así proceder con la info básica
-            console.warn('Error verificando usuario con backend, procediendo con tokens');
             
-            // Crear datos básicos del usuario
+          } else {
+            console.warn('⚠️ Error verificando usuario con backend, usando datos básicos');
+            
+            // Si la verificación falla, crear datos básicos del usuario
             const basicUserData = {
               id: userId,
-              email: 'usuario@microsoft.com', // Placeholder
+              email: 'usuario@microsoft.com',
               username: `user_${userId}`,
-              auth_method: 'microsoft'
+              auth_method: 'microsoft',
+              first_name: 'Usuario',
+              last_name: 'Microsoft'
             };
             
             localStorage.setItem('user_data', JSON.stringify(basicUserData));
@@ -105,14 +132,16 @@ const MicrosoftCallback = () => {
             }, 1500);
           }
         } catch (verificationError) {
-          console.warn('Error verificando usuario, pero tokens guardados:', verificationError);
+          console.error('❌ Error verificando usuario:', verificationError);
           
           // Crear datos básicos y proceder
           const basicUserData = {
             id: userId,
             email: 'usuario@microsoft.com',
             username: `user_${userId}`,
-            auth_method: 'microsoft'
+            auth_method: 'microsoft',
+            first_name: 'Usuario',
+            last_name: 'Microsoft'
           };
           
           localStorage.setItem('user_data', JSON.stringify(basicUserData));
@@ -127,108 +156,71 @@ const MicrosoftCallback = () => {
         }
 
       } catch (error) {
-        console.error('Error en callback de Microsoft:', error);
+        console.error('❌ Error procesando callback:', error);
         setStatus('error');
-        setMessage('Error procesando la autenticación');
+        setMessage('Error procesando autenticación. Por favor, inténtalo de nuevo.');
         
         setTimeout(() => {
-          window.location.href = '/';
+          window.location.href = '/?error=callback_processing_error';
         }, 3000);
       }
     };
 
-    handleCallback();
-  }, [updateUser]);
+    processCallback();
+  }, [location.search, updateUser]);
 
-  const handleBackToHome = () => {
-    window.location.href = '/';
+  // Renderizado condicional basado en el estado
+  const renderContent = () => {
+    switch (status) {
+      case 'processing':
+        return (
+          <Loading 
+            fullScreen 
+            text={message}
+            showSpinner={true}
+          />
+        );
+      
+      case 'success':
+        return (
+          <div className="min-h-screen flex items-center justify-center bg-green-50">
+            <div className="text-center">
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
+                <svg className="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">¡Autenticación Exitosa!</h2>
+              <p className="text-gray-600">{message}</p>
+              <div className="mt-4">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600 mx-auto"></div>
+              </div>
+            </div>
+          </div>
+        );
+      
+      case 'error':
+        return (
+          <div className="min-h-screen flex items-center justify-center bg-red-50">
+            <div className="text-center max-w-md mx-auto px-4">
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
+                <svg className="h-8 w-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Error de Autenticación</h2>
+              <p className="text-gray-600 mb-4">{message}</p>
+              <p className="text-sm text-gray-500">Serás redirigido al login en unos segundos...</p>
+            </div>
+          </div>
+        );
+      
+      default:
+        return <Loading fullScreen text="Cargando..." />;
+    }
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center px-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center"
-      >
-        {/* Icono de estado */}
-        <div className="mb-6">
-          {status === 'processing' && (
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-              className="mx-auto w-16 h-16"
-            >
-              <Loader2 className="w-16 h-16 text-blue-500" />
-            </motion.div>
-          )}
-          
-          {status === 'success' && (
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: "spring", stiffness: 200, damping: 10 }}
-              className="mx-auto w-16 h-16"
-            >
-              <CheckCircle className="w-16 h-16 text-green-500" />
-            </motion.div>
-          )}
-          
-          {status === 'error' && (
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: "spring", stiffness: 200, damping: 10 }}
-              className="mx-auto w-16 h-16"
-            >
-              <XCircle className="w-16 h-16 text-red-500" />
-            </motion.div>
-          )}
-        </div>
-
-        {/* Título */}
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">
-          {status === 'processing' && 'Procesando Autenticación'}
-          {status === 'success' && 'Autenticación Exitosa'}
-          {status === 'error' && 'Error de Autenticación'}
-        </h2>
-
-        {/* Mensaje */}
-        <p className="text-gray-600 mb-6">
-          {message}
-        </p>
-
-        {/* Barra de progreso para éxito */}
-        {status === 'success' && (
-          <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: '100%' }}
-              transition={{ duration: 1.5 }}
-              className="bg-gradient-to-r from-blue-500 to-green-500 h-2 rounded-full"
-            />
-          </div>
-        )}
-
-        {/* Botón de acción para errores */}
-        {status === 'error' && (
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={handleBackToHome}
-            className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200"
-          >
-            Volver al Inicio
-          </motion.button>
-        )}
-
-        {/* Información adicional */}
-        <div className="mt-6 text-xs text-gray-500">
-          Azure Advisor Analyzer
-        </div>
-      </motion.div>
-    </div>
-  );
+  return renderContent();
 };
 
 export default MicrosoftCallback;

@@ -14,6 +14,7 @@ router.register(r'register', views.UserRegistrationView, basename='register')
 urlpatterns = [
     # Router URLs (para /api/auth/users/, /api/auth/register/, etc.)
     path('', include(router.urls)),
+    path('auth/users/profile/', views.UserViewSet.as_view({'get': 'profile'}), name='user-profile'),
     
     # Autenticación JWT
     path('login/', views.CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),

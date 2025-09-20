@@ -10,7 +10,7 @@ from django.conf import settings
 from django.http import JsonResponse
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView
@@ -39,6 +39,47 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
     
     def get_queryset(self):
         return User.objects.filter(id=self.request.user.id)
+    
+    @action(detail=False, methods=['get'], url_path='profile')
+    def profile(self, request):
+        """Endpoint específico para obtener el perfil del usuario actual"""
+        try:
+            serializer = self.get_serializer(request.user)
+            logger.info(f"Perfil solicitado por usuario: {request.user.email}")
+            return Response(serializer.data)
+        except Exception as e:
+            logger.error(f"Error obteniendo perfil de usuario: {e}")
+            return Response(
+                {"error": "Error obteniendo perfil de usuario"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def list(self, request, *args, **kwargs):
+        """Override del list para retornar solo el usuario actual"""
+        try:
+            user = request.user
+            serializer = self.get_serializer(user)
+            logger.info(f"Lista de usuarios solicitada por: {user.email}")
+            return Response(serializer.data)
+        except Exception as e:
+            logger.error(f"Error en list de usuarios: {e}")
+            return Response(
+                {"error": "Error obteniendo datos de usuario"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def retrieve(self, request, *args, **kwargs):
+        """Override del retrieve para solo permitir acceso al propio perfil"""
+        user_id = kwargs.get('pk')
+        
+        # Solo permitir acceso al propio perfil
+        if str(user_id) != str(request.user.id):
+            return Response(
+                {"error": "No tienes permisos para acceder a este perfil"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        return super().retrieve(request, *args, **kwargs)
 
 class LogoutView(APIView):
     """Vista para logout (blacklist del token)"""

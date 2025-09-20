@@ -1,4 +1,4 @@
-// frontend/src/context/AuthContext.jsx
+// frontend/src/context/AuthContext.jsx - VERSIÓN CORREGIDA
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { authService } from '../services/authService';
 import toast from 'react-hot-toast';
@@ -8,7 +8,7 @@ const initialState = {
   user: null,
   isAuthenticated: false,
   isLoading: true,
-  isInitialized: false, // Nuevo estado para saber cuando la verificación inicial terminó
+  isInitialized: false,
   error: null
 };
 
@@ -86,77 +86,70 @@ const authReducer = (state, action) => {
   }
 };
 
-// Crear el contexto
 const AuthContext = createContext(null);
 
-// Provider del contexto de autenticación
 export const AuthProvider = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
-  // Verificar autenticación al cargar la app
-  useEffect(() => {
-    checkAuthStatus();
-  }, []);
-
-  // Función para verificar si hay tokens válidos
+  // Función mejorada para verificar tokens válidos
   const hasValidTokens = () => {
     const accessToken = localStorage.getItem('access_token');
     const refreshToken = localStorage.getItem('refresh_token');
-    const authTimestamp = localStorage.getItem('auth_timestamp');
+    
+    console.log('🔍 Verificando tokens:', { 
+      hasAccess: !!accessToken, 
+      hasRefresh: !!refreshToken 
+    });
     
     if (!accessToken || !refreshToken) {
+      console.log('❌ No hay tokens disponibles');
       return false;
     }
 
-    // Verificar si la autenticación no es muy antigua (7 días)
-    if (authTimestamp) {
-      const authTime = parseInt(authTimestamp);
-      const now = Date.now();
-      const sevenDays = 7 * 24 * 60 * 60 * 1000; // 7 días en ms
-      
-      if (now - authTime > sevenDays) {
-        console.log('Autenticación expirada por tiempo');
-        return false;
-      }
-    }
-
-    // Verificar si el token no está expirado
     try {
+      // Decodificar el payload del token
       const payload = JSON.parse(atob(accessToken.split('.')[1]));
       const now = Date.now() / 1000;
       
+      console.log('🕒 Token expira en:', new Date(payload.exp * 1000));
+      console.log('🕒 Hora actual:', new Date(now * 1000));
+      
       if (payload.exp < now) {
-        console.log('Access token expirado');
-        // Si el access token está expirado, intentar renovar con refresh token
+        console.log('⏰ Access token expirado, necesita renovación');
         return 'refresh_needed';
       }
       
+      console.log('✅ Tokens válidos');
       return true;
     } catch (error) {
-      console.error('Error parsing token:', error);
+      console.error('❌ Error parsing token:', error);
       return false;
     }
   };
 
+  // Función mejorada para verificar autenticación
   const checkAuthStatus = async () => {
+    console.log('🔄 Iniciando verificación de autenticación...');
     dispatch({ type: AUTH_ACTIONS.LOADING, payload: true });
     
     try {
       const tokenStatus = hasValidTokens();
       
       if (tokenStatus === false) {
-        // No hay tokens válidos, logout
+        console.log('🚫 No hay tokens válidos, cerrando sesión');
         dispatch({ type: AUTH_ACTIONS.LOGOUT });
         return;
       }
 
       if (tokenStatus === 'refresh_needed') {
-        // Intentar renovar token
+        console.log('🔄 Renovando token...');
         try {
           await authService.refreshToken();
-          console.log('Token renovado exitosamente');
+          console.log('✅ Token renovado exitosamente');
         } catch (refreshError) {
-          console.error('Error renovando token:', refreshError);
+          console.error('❌ Error renovando token:', refreshError);
+          // Limpiar tokens inválidos
+          localStorage.clear();
           dispatch({ type: AUTH_ACTIONS.LOGOUT });
           return;
         }
@@ -165,41 +158,68 @@ export const AuthProvider = ({ children }) => {
       // Obtener datos del usuario
       const userData = localStorage.getItem('user_data');
       if (userData) {
-        const user = JSON.parse(userData);
-        console.log('Usuario encontrado en localStorage:', user);
-        dispatch({ 
-          type: AUTH_ACTIONS.LOGIN_SUCCESS, 
-          payload: { user } 
-        });
-      } else {
-        // Si no hay datos del usuario, intentar obtenerlos del backend
         try {
-          console.log('Obteniendo datos del usuario del backend...');
-          const userData = await authService.getCurrentUser();
-          localStorage.setItem('user_data', JSON.stringify(userData));
+          const user = JSON.parse(userData);
+          console.log('👤 Usuario encontrado en localStorage:', user);
           dispatch({ 
             type: AUTH_ACTIONS.LOGIN_SUCCESS, 
-            payload: { user: userData } 
+            payload: { user } 
           });
-        } catch (error) {
-          console.error('Error obteniendo datos del usuario:', error);
-          // Si falla obtener datos del usuario pero hay tokens, usar datos básicos
-          const basicUser = {
-            id: localStorage.getItem('user_id'),
-            email: 'usuario@microsoft.com',
-            username: 'Usuario'
-          };
-          dispatch({ 
-            type: AUTH_ACTIONS.LOGIN_SUCCESS, 
-            payload: { user: basicUser } 
-          });
+        } catch (parseError) {
+          console.error('❌ Error parsing user data:', parseError);
+          // Datos del usuario corruptos, intentar obtener del backend
+          await fetchUserFromBackend();
         }
+      } else {
+        console.log('🔄 No hay datos de usuario, obteniendo del backend...');
+        await fetchUserFromBackend();
       }
     } catch (error) {
-      console.error('Error verificando autenticación:', error);
+      console.error('❌ Error verificando autenticación:', error);
       dispatch({ type: AUTH_ACTIONS.LOGOUT });
     }
   };
+
+  // Función para obtener datos del usuario del backend
+  const fetchUserFromBackend = async () => {
+    try {
+      const userData = await authService.getCurrentUser();
+      localStorage.setItem('user_data', JSON.stringify(userData));
+      dispatch({ 
+        type: AUTH_ACTIONS.LOGIN_SUCCESS, 
+        payload: { user: userData } 
+      });
+      console.log('✅ Datos de usuario obtenidos del backend:', userData);
+    } catch (error) {
+      console.error('❌ Error obteniendo datos del usuario del backend:', error);
+      
+      // Si falla, crear datos básicos del usuario con la info disponible
+      const userId = localStorage.getItem('user_id');
+      if (userId) {
+        const basicUser = {
+          id: userId,
+          email: 'usuario@microsoft.com',
+          username: 'Usuario',
+          auth_method: localStorage.getItem('auth_method') || 'unknown'
+        };
+        
+        localStorage.setItem('user_data', JSON.stringify(basicUser));
+        dispatch({ 
+          type: AUTH_ACTIONS.LOGIN_SUCCESS, 
+          payload: { user: basicUser } 
+        });
+        console.log('⚠️ Usando datos básicos del usuario:', basicUser);
+      } else {
+        // Si no hay ninguna info, hacer logout
+        dispatch({ type: AUTH_ACTIONS.LOGOUT });
+      }
+    }
+  };
+
+  // Verificar autenticación al cargar la app
+  useEffect(() => {
+    checkAuthStatus();
+  }, []);
 
   const login = async (credentials) => {
     dispatch({ type: AUTH_ACTIONS.LOADING, payload: true });
@@ -258,7 +278,9 @@ export const AuthProvider = ({ children }) => {
     
     try {
       await authService.logout();
-      
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+    } finally {
       // Limpiar todos los datos de autenticación
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
@@ -267,19 +289,8 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('auth_timestamp');
       localStorage.removeItem('auth_method');
       
-      toast.success('Sesión cerrada exitosamente');
-    } catch (error) {
-      console.error('Error al cerrar sesión:', error);
-      
-      // Limpiar datos localmente aunque haya error en el backend
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('user_id');
-      localStorage.removeItem('user_data');
-      localStorage.removeItem('auth_timestamp');
-      localStorage.removeItem('auth_method');
-    } finally {
       dispatch({ type: AUTH_ACTIONS.LOGOUT });
+      toast.success('Sesión cerrada exitosamente');
     }
   };
 
@@ -289,14 +300,18 @@ export const AuthProvider = ({ children }) => {
     // Actualizar también en localStorage
     const existingUserData = localStorage.getItem('user_data');
     if (existingUserData) {
-      const currentUser = JSON.parse(existingUserData);
-      const updatedUser = { ...currentUser, ...userData };
-      localStorage.setItem('user_data', JSON.stringify(updatedUser));
+      try {
+        const currentUser = JSON.parse(existingUserData);
+        const updatedUser = { ...currentUser, ...userData };
+        localStorage.setItem('user_data', JSON.stringify(updatedUser));
+      } catch (error) {
+        console.error('Error actualizando user data:', error);
+        localStorage.setItem('user_data', JSON.stringify(userData));
+      }
     } else {
       localStorage.setItem('user_data', JSON.stringify(userData));
     }
 
-    // Actualizar contexto
     dispatch({ type: AUTH_ACTIONS.UPDATE_USER, payload: userData });
   };
 

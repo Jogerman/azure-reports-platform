@@ -28,7 +28,7 @@ urlpatterns = [
     path('api/auth/', include('apps.authentication.urls')),
     path('api/reports/', include('apps.reports.urls')),
     path('api/files/', include('apps.storage.urls')),
-    path('api/dashboard/', include('apps.analytics.urls')),
+    path('api/analytics/', include('apps.analytics.urls')),
     
     # Traditional URLs - Para OAuth callbacks
     path('auth/', include('apps.authentication.traditional_urls')),

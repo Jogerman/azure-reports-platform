@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 
 from .models import Report, CSVFile
 from .serializers import ReportSerializer
-from apps.storage.services.enhanced_analyzer import generate_enhanced_html_report
+from apps.reports.utils.enhanced_analyzer import generate_enhanced_html_report
 from .utils.cache_manager import ReportCacheManager
 
 logger = logging.getLogger(__name__)

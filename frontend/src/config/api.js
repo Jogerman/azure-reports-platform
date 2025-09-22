@@ -68,10 +68,14 @@ export const API_CONFIG = {
 export const fetchWithAuth = async (url, options = {}) => {
   const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
   
+  // Detectar si es FormData para no incluir Content-Type
+  const isFormData = options.body instanceof FormData;
+  
   const config = {
     ...options,
     headers: {
-      ...API_CONFIG.DEFAULT_HEADERS,
+      // Solo incluir headers por defecto si NO es FormData
+      ...(isFormData ? {} : API_CONFIG.DEFAULT_HEADERS),
       ...options.headers,
       ...(token && { Authorization: `Bearer ${token}` }),
     },

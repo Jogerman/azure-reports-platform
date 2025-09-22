@@ -163,8 +163,8 @@ class Report(models.Model):
     
     def get_csv_file_path(self):
         """Retorna la ruta del archivo CSV asociado"""
-        if self.csv_file and self.csv_file.file:
-            return self.csv_file.file.path
+        if self.csv_file and self.csv_file.azure_blob_url:
+            return self.csv_file.azure_blob_url
         return None
     
     def get_analysis_summary(self):

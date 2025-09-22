@@ -30,6 +30,9 @@ urlpatterns = [
     path('api/files/', include('apps.storage.urls')),
     path('api/dashboard/', include('apps.analytics.urls')),
     
+    # Traditional URLs - Para OAuth callbacks
+    path('auth/', include('apps.authentication.traditional_urls')),
+
     # Root API
     path('api/', include(router.urls)),
 ]

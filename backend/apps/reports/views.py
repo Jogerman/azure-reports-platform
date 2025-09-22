@@ -1,9 +1,8 @@
 # apps/reports/views.py - VERSIÓN FINAL CORREGIDA
-
+from django.utils import timezone
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.decorators import action
 from rest_framework import status, viewsets, permissions
 from rest_framework.permissions import IsAuthenticated
 from django.http import HttpResponse
@@ -221,6 +220,7 @@ class ReportViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     
+    
     def _process_report_with_ai(self, report, csv_file):
         """Procesar reporte con datos reales de Azure Advisor"""
         try:
@@ -233,14 +233,14 @@ class ReportViewSet(viewsets.ModelViewSet):
             # Generar contenido basado en datos reales
             report_content = self._generate_report_content(report, analysis_data)
             
-            # Guardar contenido del reporte
-            if not hasattr(report, 'content'):
-                # Si no hay campo content en el modelo, guardarlo en metadata
-                if not report.metadata:
-                    report.metadata = {}
-                report.metadata['generated_content'] = report_content
-            else:
-                report.content = report_content
+            # ✅ USAR analysis_data EN LUGAR DE metadata
+            # Guardar contenido del reporte en analysis_data
+            if not report.analysis_data:
+                report.analysis_data = {}
+                
+            report.analysis_data['generated_content'] = report_content
+            report.analysis_data['generation_timestamp'] = timezone.now().isoformat()
+            report.analysis_data['source_csv_id'] = str(csv_file.id)
             
             report.save()
             
@@ -250,7 +250,7 @@ class ReportViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.error(f"Error procesando reporte con IA: {e}")
             return False
-    
+        
     def _generate_report_content(self, report, analysis_data):
         """Generar contenido del reporte basado en datos reales"""
         try:

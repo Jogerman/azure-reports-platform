@@ -95,11 +95,8 @@ class CSVFileUploadSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(f"Error procesando archivo: {str(e)}")
 
 class ReportSerializer(serializers.ModelSerializer):
-    """Serializer para reportes"""
+    user_email = serializers.CharField(source='user.email', read_only=True)
     csv_file_details = CSVFileSerializer(source='csv_file', read_only=True)
-    user_email = serializers.EmailField(source='user.email', read_only=True)
-    
-    # Campos calculados
     processing_time = serializers.SerializerMethodField()
     has_content = serializers.SerializerMethodField()
     recommendations_count = serializers.SerializerMethodField()
@@ -110,7 +107,7 @@ class ReportSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'description', 'report_type', 'status',
             'created_at', 'generated_at', 'user_email', 'csv_file',
-            'csv_file_details', 'metadata', 'processing_time',
+            'csv_file_details', 'analysis_data', 'processing_time',  # ✅ Usar analysis_data
             'has_content', 'recommendations_count', 'potential_savings'
         ]
         read_only_fields = [
@@ -128,9 +125,8 @@ class ReportSerializer(serializers.ModelSerializer):
     
     def get_has_content(self, obj):
         """Verificar si el reporte tiene contenido generado"""
-        if hasattr(obj, 'content') and obj.content:
-            return True
-        if obj.metadata and 'generated_content' in obj.metadata:
+        # ✅ ACTUALIZAR para usar analysis_data
+        if obj.analysis_data and 'generated_content' in obj.analysis_data:
             return True
         return False
     
@@ -158,16 +154,9 @@ class ReportSerializer(serializers.ModelSerializer):
         try:
             if obj.csv_file and obj.csv_file.analysis_data:
                 analysis_data = obj.csv_file.analysis_data
-                
-                # Buscar en cost_optimization
-                cost_opt = analysis_data.get('cost_optimization', {})
-                if 'estimated_monthly_optimization' in cost_opt:
-                    return cost_opt['estimated_monthly_optimization']
-                
-                # Buscar directamente
-                if 'potential_savings' in analysis_data:
-                    return analysis_data['potential_savings']
-                
+                cost_optimization = analysis_data.get('cost_optimization', {})
+                estimated_savings = cost_optimization.get('estimated_monthly_optimization', 0)
+                return estimated_savings
             return 0
         except:
             return 0

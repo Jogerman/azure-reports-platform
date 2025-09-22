@@ -7,6 +7,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from apps.reports.models import CSVFile
 from rest_framework import serializers
 from django.utils import timezone
+from apps.reports.analyzers.csv_analyzer import analyze_csv_content
 import pandas as pd
 import logging
 import uuid

@@ -1,8 +1,3 @@
-"""
-Generador HTML mejorado para reportes de Azure Advisor
-Basado en el código Django anterior pero con mejoras significativas
-"""
-
 import json
 import pandas as pd
 from datetime import datetime

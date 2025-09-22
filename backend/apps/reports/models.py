@@ -163,8 +163,8 @@ class Report(models.Model):
     
     def get_csv_file_path(self):
         """Retorna la ruta del archivo CSV asociado"""
-        if self.csv_upload and self.csv_upload.file:
-            return self.csv_upload.file.path
+        if self.csv_file and self.csv_file.file:
+            return self.csv_file.file.path
         return None
     
     def get_analysis_summary(self):
@@ -185,7 +185,7 @@ class Report(models.Model):
     @property
     def enhanced_html_available(self):
         """Verifica si el reporte tiene datos suficientes para HTML mejorado"""
-        return bool(self.csv_upload and self.csv_upload.file)
+        return bool(self.csv_file and self.csv_file.file)
     
     def get_preview_metrics(self):
         """Retorna métricas para preview rápido"""

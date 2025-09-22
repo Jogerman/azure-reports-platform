@@ -410,4 +410,18 @@ PDF_MAX_PAGES = config('PDF_MAX_PAGES', default=50, cast=int)
 ENABLE_ANALYTICS = config('ENABLE_ANALYTICS', default=True, cast=bool)
 ANALYTICS_RETENTION_DAYS = config('ANALYTICS_RETENTION_DAYS', default=90, cast=int)
 
+# Configuraciones para reportes mejorados
+REPORT_CACHE_TIMEOUT = 3600  # 1 hora
+REPORT_MAX_CSV_SIZE = 10 * 1024 * 1024  # 10MB
+REPORT_ALLOWED_FORMATS = ['csv', 'xlsx']
 
+# Cache para reportes (si usas Redis)
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': os.getenv('REDIS_URL', 'redis://localhost:6379/1'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        }
+    }
+}

@@ -17,6 +17,8 @@ from datetime import datetime, timedelta
 
 from .models import Report, CSVFile
 from .serializers import ReportSerializer
+from apps.storage.services.enhanced_analyzer import generate_enhanced_html_report
+from .utils.cache_manager import ReportCacheManager
 
 logger = logging.getLogger(__name__)
 
@@ -410,136 +412,56 @@ class ReportViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['get'], url_path='html')
     def html(self, request, pk=None):
-        """Generar vista HTML del reporte - ENDPOINT CORREGIDO"""
+        """Generar vista HTML del reporte con caché"""
         try:
             report = self.get_object()
             
-            # Verificar que el reporte existe
-            if not report:
-                return HttpResponse(
-                    '<html><body><h1>Error 404</h1><p>Reporte no encontrado</p></body></html>',
-                    content_type='text/html',
-                    status=404
-                )
+            # Intentar obtener del caché primero
+            cached_html = ReportCacheManager.get_cached_html(report)
+            if cached_html and not request.GET.get('refresh'):
+                logger.info(f"Sirviendo HTML desde caché para reporte {report.id}")
+                return HttpResponse(cached_html, content_type='text/html')
             
-            logger.info(f"Generando HTML para reporte {report.id} - {report.title}")
+            logger.info(f"Generando HTML nuevo para reporte {report.id}")
             
-            # Generar HTML detallado
-            try:
-                html_content = self._generate_detailed_html_report(report)
-            except Exception as html_error:
-                logger.error(f"Error en generador detallado: {html_error}")
-                # Fallback a generador simple
-                html_content = self._generate_simple_html_report(report)
+            # Generar nuevo HTML
+            html_content = generate_enhanced_html_report(report)
             
-            # Registrar actividad
-            try:
-                self._track_activity('view_report', f'Reporte HTML visualizado: {report.title}')
-            except Exception as activity_error:
-                logger.warning(f"Error registrando actividad: {activity_error}")
+            # Guardar en caché
+            ReportCacheManager.cache_html(report, html_content)
+            
+            self._track_activity('view_report', f'Reporte HTML generado: {report.title}')
             
             return HttpResponse(html_content, content_type='text/html')
             
         except Exception as e:
-            logger.error(f"Error crítico generando HTML para reporte {pk}: {e}")
-            return HttpResponse(
-                f'''
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Error - Reporte</title>
-                    <style>
-                        body {{ font-family: Arial, sans-serif; padding: 40px; text-align: center; background: #f8f9fa; }}
-                        .error-container {{ max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
-                        .error-title {{ color: #dc3545; margin-bottom: 20px; }}
-                        .error-details {{ color: #666; margin-bottom: 20px; }}
-                        .back-button {{ background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; }}
-                    </style>
-                </head>
-                <body>
-                    <div class="error-container">
-                        <h1 class="error-title">❌ Error al cargar el reporte</h1>
-                        <p class="error-details">No se pudo generar el contenido del reporte HTML.</p>
-                        <p><strong>Error técnico:</strong> {str(e)}</p>
-                        <p><strong>Reporte ID:</strong> {pk}</p>
-                        <a href="/app/history" class="back-button">← Volver al historial</a>
-                    </div>
-                </body>
-                </html>''', 
-                content_type='text/html',
-                status=500
-            )
-    @action(detail=True, methods=['get'], url_path='debug-data')
-    def debug_data(self, request, pk=None):
-        """Método temporal para debuggear la estructura de datos"""
-        try:
-            report = self.get_object()
-            
-            debug_info = {
-                'report_id': str(report.id),
-                'report_title': report.title,
-                'has_csv_file': bool(report.csv_file),
-                'csv_filename': report.csv_file.original_filename if report.csv_file else None,
-                'has_analysis_data': bool(report.csv_file and report.csv_file.analysis_data),
-                'analysis_data_keys': [],
-                'sample_data': {}
-            }
-            
-            if report.csv_file and report.csv_file.analysis_data:
-                analysis_data = report.csv_file.analysis_data
-                debug_info['analysis_data_keys'] = list(analysis_data.keys())
-                
-                # Mostrar estructura de cada sección principal
-                for key in ['executive_summary', 'cost_optimization', 'totals', 'dashboard_metrics', 'category_analysis']:
-                    if key in analysis_data:
-                        debug_info['sample_data'][key] = analysis_data[key]
-                
-                # Si no están esas claves, mostrar las primeras 3 claves
-                if not debug_info['sample_data']:
-                    for key in list(analysis_data.keys())[:3]:
-                        debug_info['sample_data'][key] = analysis_data[key]
-            
-            return Response(debug_info, content_type='application/json')
-            
-        except Exception as e:
-            return Response({'error': str(e)}, status=500)
-    
-# AGREGAR este método de debug en views.py (temporal)
+            logger.error(f"Error generando HTML para reporte {pk}: {e}")
+            return HttpResponse(self._generate_error_fallback(str(e)), status=500)
+        
 
-    @action(detail=True, methods=['get'], url_path='debug-data')
-    def debug_data(self, request, pk=None):
-        """Método temporal para debuggear la estructura de datos"""
-        try:
-            report = self.get_object()
-            
-            debug_info = {
-                'report_id': str(report.id),
-                'report_title': report.title,
-                'has_csv_file': bool(report.csv_file),
-                'csv_filename': report.csv_file.original_filename if report.csv_file else None,
-                'has_analysis_data': bool(report.csv_file and report.csv_file.analysis_data),
-                'analysis_data_keys': [],
-                'sample_data': {}
-            }
-            
-            if report.csv_file and report.csv_file.analysis_data:
-                analysis_data = report.csv_file.analysis_data
-                debug_info['analysis_data_keys'] = list(analysis_data.keys())
-                
-                # Mostrar estructura de cada sección principal
-                for key in ['executive_summary', 'cost_optimization', 'totals', 'dashboard_metrics', 'category_analysis']:
-                    if key in analysis_data:
-                        debug_info['sample_data'][key] = analysis_data[key]
-                
-                # Si no están esas claves, mostrar las primeras 3 claves
-                if not debug_info['sample_data']:
-                    for key in list(analysis_data.keys())[:3]:
-                        debug_info['sample_data'][key] = analysis_data[key]
-            
-            return Response(debug_info, content_type='application/json')
-            
-        except Exception as e:
-            return Response({'error': str(e)}, status=500)
+    def _generate_error_fallback(self, error_message):
+        """Genera HTML de error como fallback"""
+        return f'''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Error - Reporte</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; padding: 40px; text-align: center; background: #f8f9fa; }}
+                .error-container {{ max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+                .error-title {{ color: #dc3545; margin-bottom: 20px; }}
+            </style>
+        </head>
+        <body>
+            <div class="error-container">
+                <h1 class="error-title">Error generando reporte</h1>
+                <p>Ha ocurrido un error al generar el reporte:</p>
+                <pre>{error_message}</pre>
+                <p>Por favor intenta nuevamente o contacta soporte si el problema persiste.</p>
+            </div>
+        </body>
+        </html>
+        '''    
 
 
     def _generate_detailed_html_report(self, report):

@@ -160,3 +160,41 @@ class Report(models.Model):
         if not self.expires_at:
             return False
         return timezone.now() > self.expires_at
+    
+    def get_csv_file_path(self):
+        """Retorna la ruta del archivo CSV asociado"""
+        if self.csv_upload and self.csv_upload.file:
+            return self.csv_upload.file.path
+        return None
+    
+    def get_analysis_summary(self):
+        """Retorna un resumen del análisis si está disponible"""
+        if hasattr(self, 'analysis_data') and self.analysis_data:
+            try:
+                analysis = json.loads(self.analysis_data) if isinstance(self.analysis_data, str) else self.analysis_data
+                return {
+                    'total_actions': analysis.get('total_recommendations', 0),
+                    'high_priority': analysis.get('high_priority_count', 0),
+                    'categories': analysis.get('category_distribution', {}),
+                    'has_cost_data': analysis.get('has_cost_optimization', False)
+                }
+            except (json.JSONDecodeError, AttributeError):
+                pass
+        return None
+    
+    @property
+    def enhanced_html_available(self):
+        """Verifica si el reporte tiene datos suficientes para HTML mejorado"""
+        return bool(self.csv_upload and self.csv_upload.file)
+    
+    def get_preview_metrics(self):
+        """Retorna métricas para preview rápido"""
+        summary = self.get_analysis_summary()
+        if summary:
+            return {
+                'total_recommendations': summary['total_actions'],
+                'high_priority_count': summary['high_priority'],
+                'categories_count': len(summary['categories']),
+                'has_cost_optimization': summary['has_cost_data']
+            }
+        return {}

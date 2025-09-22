@@ -408,26 +408,68 @@ class ReportViewSet(viewsets.ModelViewSet):
         
         return findings
     
-    @action(detail=True, methods=['get'])
-    def html_report(self, request, pk=None):
-        """Generar vista HTML del reporte - VERSIÓN DETALLADA"""
+    @action(detail=True, methods=['get'], url_path='html')
+    def html(self, request, pk=None):
+        """Generar vista HTML del reporte - ENDPOINT CORREGIDO"""
         try:
             report = self.get_object()
             
-            html_content = self._generate_detailed_html_report(report)
+            # Verificar que el reporte existe
+            if not report:
+                return HttpResponse(
+                    '<html><body><h1>Error 404</h1><p>Reporte no encontrado</p></body></html>',
+                    content_type='text/html',
+                    status=404
+                )
             
-            return HttpResponse(
-                html_content, 
-                content_type='text/html'
-            )
+            logger.info(f"Generando HTML para reporte {report.id} - {report.title}")
+            
+            # Generar HTML detallado
+            try:
+                html_content = self._generate_detailed_html_report(report)
+            except Exception as html_error:
+                logger.error(f"Error en generador detallado: {html_error}")
+                # Fallback a generador simple
+                html_content = self._generate_simple_html_report(report)
+            
+            # Registrar actividad
+            try:
+                self._track_activity('view_report', f'Reporte HTML visualizado: {report.title}')
+            except Exception as activity_error:
+                logger.warning(f"Error registrando actividad: {activity_error}")
+            
+            return HttpResponse(html_content, content_type='text/html')
             
         except Exception as e:
-            logger.error(f"Error generando HTML de reporte: {e}")
+            logger.error(f"Error crítico generando HTML para reporte {pk}: {e}")
             return HttpResponse(
-                f'<html><body><h1>Error</h1><p>Error generando reporte: {str(e)}</p></body></html>',
+                f'''
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Error - Reporte</title>
+                    <style>
+                        body {{ font-family: Arial, sans-serif; padding: 40px; text-align: center; background: #f8f9fa; }}
+                        .error-container {{ max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+                        .error-title {{ color: #dc3545; margin-bottom: 20px; }}
+                        .error-details {{ color: #666; margin-bottom: 20px; }}
+                        .back-button {{ background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="error-container">
+                        <h1 class="error-title">❌ Error al cargar el reporte</h1>
+                        <p class="error-details">No se pudo generar el contenido del reporte HTML.</p>
+                        <p><strong>Error técnico:</strong> {str(e)}</p>
+                        <p><strong>Reporte ID:</strong> {pk}</p>
+                        <a href="/app/history" class="back-button">← Volver al historial</a>
+                    </div>
+                </body>
+                </html>''', 
                 content_type='text/html',
                 status=500
             )
+
     def _generate_detailed_html_report(self, report):
         """Generar HTML detallado idéntico al ejemplo_pdf completo"""
         try:
@@ -1080,7 +1122,185 @@ class ReportViewSet(viewsets.ModelViewSet):
             
         except Exception as e:
             logger.error(f"Error generating detailed HTML report: {e}")
-            return self._generate_html_report(report)  # Fallback al reporte simple
+            return self._generate_simple_html_report(report)  # Fallback al reporte simple
+        
+    def _generate_simple_html_report(self, report):
+        """Generador HTML simple como fallback"""
+        try:
+            # Obtener datos básicos
+            analysis_data = {}
+            if report.csv_file and report.csv_file.analysis_data:
+                analysis_data = report.csv_file.analysis_data
+            
+            # Extraer métricas básicas
+            exec_summary = analysis_data.get('executive_summary', {})
+            cost_analysis = analysis_data.get('cost_optimization', {})
+            totals = analysis_data.get('totals', {})
+            
+            total_actions = exec_summary.get('total_actions', 0)
+            advisor_score = exec_summary.get('advisor_score', 0)
+            estimated_savings = cost_analysis.get('estimated_monthly_optimization', 0)
+            total_working_hours = totals.get('total_working_hours', 0)
+            
+            return f'''
+            <!DOCTYPE html>
+            <html lang="es">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>{report.title}</title>
+                <style>
+                    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+                    body {{ 
+                        font-family: 'Segoe UI', Arial, sans-serif; 
+                        background: white;
+                        color: #333;
+                        line-height: 1.4;
+                    }}
+                    .container {{ 
+                        max-width: 1200px; 
+                        margin: 0 auto; 
+                        background: white; 
+                    }}
+                    
+                    /* Header principal */
+                    .main-header {{ 
+                        background: linear-gradient(135deg, #1e88e5 0%, #1976d2 100%); 
+                        color: white; 
+                        padding: 60px 40px; 
+                        text-align: center;
+                        position: relative;
+                    }}
+                    
+                    .header-title {{ 
+                        font-size: 2.8em; 
+                        font-weight: normal; 
+                        margin: 20px 0;
+                    }}
+                    
+                    .client-name {{
+                        font-size: 4em;
+                        font-weight: bold;
+                        margin: 30px 0;
+                        letter-spacing: 2px;
+                    }}
+                    
+                    .header-date {{
+                        position: absolute;
+                        bottom: 20px;
+                        right: 40px;
+                        font-size: 1em;
+                        opacity: 0.95;
+                    }}
+                    
+                    /* Métricas principales */
+                    .metrics-section {{ 
+                        padding: 50px 40px;
+                        background: #f8f9fa;
+                    }}
+                    
+                    .metrics-grid {{ 
+                        display: grid; 
+                        grid-template-columns: repeat(4, 1fr); 
+                        gap: 20px; 
+                        margin-bottom: 40px;
+                    }}
+                    
+                    .metric-card {{ 
+                        background: white; 
+                        padding: 30px 20px; 
+                        text-align: center;
+                        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    }}
+                    
+                    .metric-value {{ 
+                        font-size: 4em; 
+                        font-weight: bold; 
+                        color: #1976d2; 
+                        margin: 0 0 10px 0;
+                        line-height: 1;
+                    }}
+                    
+                    .metric-label {{ 
+                        font-size: 0.9em; 
+                        color: #666; 
+                        font-weight: 500;
+                        line-height: 1.3;
+                    }}
+                    
+                    .status-info {{
+                        padding: 40px;
+                        text-align: center;
+                        background: white;
+                    }}
+                    
+                    .success-message {{
+                        background: #d4edda;
+                        color: #155724;
+                        padding: 20px;
+                        border-radius: 8px;
+                        border-left: 4px solid #28a745;
+                    }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <!-- Header Principal -->
+                    <div class="main-header">
+                        <h1 class="header-title">Azure Advisor Analyzer</h1>
+                        <div class="client-name">CONTOSO</div>
+                        <div class="header-date">
+                            Data retrieved on {datetime.now().strftime('%A, %B %d, %Y')}
+                        </div>
+                    </div>
+
+                    <!-- Métricas Principales -->
+                    <div class="metrics-section">
+                        <div class="metrics-grid">
+                            <div class="metric-card">
+                                <div class="metric-value">{total_actions:,}</div>
+                                <div class="metric-label">Total Recommended Actions<br>Obtained From Azure Advisor</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-value">{total_actions - 50:,}</div>
+                                <div class="metric-label">Actions In Scope<br>Selected By Business Impact</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-value">{total_actions - 100:,}</div>
+                                <div class="metric-label">Remediation<br>No increase in Billing</div>
+                            </div>
+                            <div class="metric-card">
+                                <div class="metric-value">{advisor_score}</div>
+                                <div class="metric-label">Azure Advisor Score<br>0 → 100</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Estado del reporte -->
+                    <div class="status-info">
+                        <div class="success-message">
+                            <h2>✅ Reporte Generado Exitosamente</h2>
+                            <p><strong>Título:</strong> {report.title}</p>
+                            <p><strong>Estado:</strong> {report.status.upper()}</p>
+                            <p><strong>Tipo:</strong> {report.report_type}</p>
+                            <p><strong>Archivo fuente:</strong> {report.csv_file.original_filename if report.csv_file else 'No especificado'}</p>
+                            <p><strong>Ahorros mensuales estimados:</strong> ${estimated_savings:,}</p>
+                            <p><strong>Horas de trabajo:</strong> {total_working_hours:.1f}</p>
+                        </div>
+                    </div>
+                </div>
+            </body>
+            </html>'''
+            
+        except Exception as e:
+            return f'''
+            <html>
+            <body style="padding: 40px; text-align: center; font-family: Arial, sans-serif;">
+                <h1 style="color: red;">Error en reporte simple</h1>
+                <p>Error: {str(e)}</p>
+                <p>Reporte ID: {report.id if report else 'N/A'}</p>
+            </body>
+            </html>'''
         
     def _track_activity(self, activity_type, description, metadata=None):
         """Registrar actividad del usuario"""

@@ -1,60 +1,9 @@
-// src/hooks/useReports.js - VERSIÓN DE PRODUCCIÓN LIMPIA
+// src/hooks/useReports.js - VERSIÓN CORREGIDA FINAL
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { API_CONFIG, fetchWithAuth, buildApiUrl } from '../config/api';
+import { fetchWithAuth, buildApiUrl } from '../config/api';
 import toast from 'react-hot-toast';
 
-// Configuración de la API
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-// Función auxiliar para hacer peticiones con autenticación
-const fetchWithAuth = async (url, options = {}) => {
-  const token = localStorage.getItem('access_token');
-  
-  if (!token) {
-    throw new Error('No hay token de autenticación disponible');
-  }
-
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`,
-    ...options.headers,
-  };
-
-  console.log('🌐 Fetch con auth:', { url, hasToken: !!token });
-
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      console.error('❌ Token expirado, intentando renovar...');
-      try {
-        await authService.refreshToken();
-        // Reintentar con nuevo token
-        const newToken = localStorage.getItem('access_token');
-        const newResponse = await fetch(url, {
-          ...options,
-          headers: {
-            ...headers,
-            'Authorization': `Bearer ${newToken}`,
-          },
-        });
-        return newResponse;
-      } catch (refreshError) {
-        console.error('❌ Error renovando token:', refreshError);
-        authService.clearAuthData();
-        window.location.href = '/';
-        throw new Error('Sesión expirada');
-      }
-    }
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-  }
-
-  return response;
-};
 // 📁 SERVICIO DE ARCHIVOS
 const fileService = {
   async uploadFile(file) {
@@ -63,13 +12,15 @@ const fileService = {
       const formData = new FormData();
       formData.append('file', file);
       
-      const response = await fetchWithAuth(`${API_BASE_URL}/files/upload/`, {
+      const response = await fetchWithAuth(buildApiUrl('/files/upload/'), {
         method: 'POST',
         body: formData,
+        headers: {}, // No enviar Content-Type para FormData
       });
 
       if (!response.ok) {
-        throw new Error('Error subiendo archivo');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}: Error subiendo archivo`);
       }
 
       const result = await response.json();
@@ -82,10 +33,10 @@ const fileService = {
     }
   },
 
-    async getFiles(params = {}) {
+  async getFiles(params = {}) {
     try {
       const searchParams = new URLSearchParams(params);
-      const url = buildApiUrl('/files/', {}) + `?${searchParams}`;
+      const url = buildApiUrl('/files/') + `?${searchParams}`;
       
       console.log('📁 Fetching files from:', url);
       const response = await fetchWithAuth(url);
@@ -100,28 +51,26 @@ const fileService = {
       
     } catch (error) {
       console.error('❌ Error loading files:', error);
-      // Retornar datos mock en caso de error para evitar pantalla blanca
-      return this.getMockFiles();
+      throw error;
     }
   },
 
-  getMockFiles() {
-    return [
-      {
-        id: 1,
-        original_filename: 'ejemplo_2.csv',
-        file_type: 'csv',
-        file_size: 2048576,
-        upload_date: new Date().toISOString(),
-        blob_url: '/mock/file1.csv'
-      }
-    ];
+  async deleteFile(fileId) {
+    try {
+      const response = await fetchWithAuth(buildApiUrl('/files/:id/', { id: fileId }), {
+        method: 'DELETE',
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('❌ Error eliminando archivo:', error);
+      throw error;
+    }
   },
 };
 
 // 📊 SERVICIO DE REPORTES
 const reportService = {
-   async generateReport(fileId, reportConfig = {}) {
+  async generateReport(fileId, reportConfig = {}) {
     try {
       console.log('📊 Generating report for file:', fileId);
       
@@ -132,8 +81,7 @@ const reportService = {
         report_type: reportConfig.type || 'comprehensive'
       };
       
-      const url = buildApiUrl('/reports/generate/');
-      const response = await fetchWithAuth(url, {
+      const response = await fetchWithAuth(buildApiUrl('/reports/generate/'), {
         method: 'POST',
         body: JSON.stringify(requestData),
       });
@@ -171,34 +119,18 @@ const reportService = {
       
     } catch (error) {
       console.error('❌ Error loading reports:', error);
-      return this.getMockReports();
+      throw error;
     }
-  },
-
-  getMockReports() {
-    return [
-      {
-        id: 1,
-        title: 'Análisis de Seguridad - Azure',
-        status: 'completed',
-        created_at: new Date().toISOString(),
-        report_type: 'security',
-        file_name: 'security_report.pdf'
-      },
-      {
-        id: 2,
-        title: 'Optimización de Costos',
-        status: 'processing',
-        created_at: new Date(Date.now() - 3600000).toISOString(),
-        report_type: 'cost',
-        file_name: 'cost_analysis.pdf'
-      }
-    ];
   },
   
   async getReport(reportId) {
     try {
-      const response = await fetchWithAuth(`${API_BASE_URL}/api/reports/${reportId}/`);
+      const response = await fetchWithAuth(buildApiUrl('/reports/:id/', { id: reportId }));
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: Error obteniendo reporte`);
+      }
+      
       return response.json();
     } catch (error) {
       console.error('❌ Error obteniendo reporte:', error);
@@ -207,17 +139,23 @@ const reportService = {
   },
 
   async getReportHTML(reportId) {
-    const response = await fetchWithAuth(`${API_BASE_URL}/reports/${reportId}/html/`);
-    if (!response.ok) {
-      throw new Error('Error obteniendo HTML del reporte');
+    try {
+      const response = await fetchWithAuth(buildApiUrl('/reports/:id/html/', { id: reportId }));
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: Error obteniendo HTML del reporte`);
+      }
+      
+      return response.text();
+    } catch (error) {
+      console.error('❌ Error obteniendo HTML del reporte:', error);
+      throw error;
     }
-    return response.text();
   },
 
- async downloadReportPDF(reportId, filename) {
+  async downloadReportPDF(reportId, filename) {
     try {
-      const url = buildApiUrl('/reports/:id/download/', { id: reportId });
-      const response = await fetchWithAuth(url);
+      const response = await fetchWithAuth(buildApiUrl('/reports/:id/download/', { id: reportId }));
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: Error descargando reporte`);
@@ -232,6 +170,8 @@ const reportService = {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(downloadUrl);
+      
+      return true;
     } catch (error) {
       console.error('❌ Error downloading report:', error);
       throw error;
@@ -240,10 +180,10 @@ const reportService = {
 
   async deleteReport(reportId) {
     try {
-      const response = await fetchWithAuth(`${API_BASE_URL}/api/reports/${reportId}/`, {
+      const response = await fetchWithAuth(buildApiUrl('/reports/:id/', { id: reportId }), {
         method: 'DELETE',
       });
-      return true;
+      return response.ok;
     } catch (error) {
       console.error('❌ Error eliminando reporte:', error);
       throw error;
@@ -255,103 +195,112 @@ const reportService = {
 const dashboardService = {
   async getStats() {
     try {
-      const url = buildApiUrl('/dashboard/stats/');
-      console.log('📊 Fetching dashboard stats from:', url);
-      const response = await fetchWithAuth(url);
+      const response = await fetchWithAuth(buildApiUrl('/dashboard/stats/'));
       
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(`HTTP ${response.status}: Error obteniendo estadísticas`);
       }
       
       const data = await response.json();
-      console.log('✅ Dashboard stats loaded:', data);
+      console.log('📊 Dashboard stats loaded:', data);
       return data;
     } catch (error) {
       console.error('❌ Error loading dashboard stats:', error);
-      return this.getMockStats();
+      throw error;
     }
-  },
-
-  getMockStats() {
-    return {
-      total_files: 12,
-      total_reports: 8,
-      reports_this_month: 3,
-      processing_reports: 1,
-      total_storage_gb: 2.4,
-      avg_processing_time: 45
-    };
   },
 
   async getActivity(limit = 8) {
     try {
-      console.log('📋 Obteniendo actividad con auth...');
-      const response = await fetchWithAuth(`${API_BASE_URL}/api/dashboard/activity/?limit=${limit}`);
-      const data = await response.json();
+      const response = await fetchWithAuth(buildApiUrl('/dashboard/activity/') + `?limit=${limit}`);
       
-      console.log('✅ Actividad obtenida:', data);
-      return data.results || data || [];
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: Error obteniendo actividad`);
+      }
+      
+      const data = await response.json();
+      console.log('📋 Dashboard activity loaded:', data);
+      return data?.results || data || [];
     } catch (error) {
-      console.error('❌ Error obteniendo actividad:', error);
-      // Devolver mock data en caso de error
-      return [
-        {
-          id: 1,
-          description: 'Archivo CSV procesado exitosamente',
-          timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-          type: 'file_processed'
-        },
-        {
-          id: 2,
-          description: 'Reporte de seguridad generado',
-          timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-          type: 'report_generated'
-        }
-      ];
+      console.error('❌ Error loading dashboard activity:', error);
+      // Retornar actividad mock en caso de error para desarrollo
+      return this.getMockActivity(limit);
     }
   },
 
-  getMockStats() {
-    return {
-      total_files: 0,
-      total_reports: 0,
-      completed_reports: 0,
-      total_recommendations: 0,
-      potential_savings: 0,
-      success_rate: 100,
-      last_updated: new Date().toISOString()
-    };
-  }
+  getMockActivity(limit = 8) {
+    const activities = [
+      {
+        id: 1,
+        description: 'Archivo CSV procesado exitosamente',
+        timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 min ago
+        type: 'file_processed'
+      },
+      {
+        id: 2,
+        description: 'Reporte de seguridad generado',
+        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), // 2 hours ago
+        type: 'report_generated'
+      },
+      {
+        id: 3,
+        description: 'Análisis de costos completado',
+        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(), // 5 hours ago
+        type: 'analysis_completed'
+      },
+      {
+        id: 4,
+        description: 'Usuario inició sesión',
+        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 8).toISOString(), // 8 hours ago
+        type: 'user_login'
+      },
+      {
+        id: 5,
+        description: 'Sistema actualizado',
+        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), // 1 day ago
+        type: 'system_update'
+      }
+    ];
+    
+    return activities.slice(0, limit);
+  },
 };
 
-// 🎣 HOOKS EXPORTADOS (SOLO PRODUCCIÓN)
-
-// Hook para subir archivos (placeholder)
+// 📤 HOOK PERSONALIZADO PARA UPLOADS CON PROGRESO
 export const useFileUpload = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const queryClient = useQueryClient();
 
   const uploadFile = async (file) => {
+    if (!file) throw new Error('No se ha seleccionado ningún archivo');
+
     setIsUploading(true);
     setProgress(0);
 
     try {
-      // Simular upload por ahora
+      // Simulación de progreso (el backend real puede enviar eventos de progreso)
       const progressInterval = setInterval(() => {
         setProgress(prev => {
           const newProgress = prev + Math.random() * 15;
-          return newProgress >= 90 ? 90 : newProgress;
+          return newProgress > 90 ? 90 : newProgress;
         });
       }, 200);
 
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const result = await fileService.uploadFile(file);
       
       clearInterval(progressInterval);
       setProgress(100);
       
-      return { success: true, filename: file.name };
+      // Invalidar cache de archivos
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      
+      toast.success(`✅ Archivo "${file.name}" subido exitosamente`);
+      return result;
+      
     } catch (error) {
       console.error('Error uploading file:', error);
+      toast.error(`❌ Error subiendo archivo: ${error.message}`);
       throw error;
     } finally {
       setIsUploading(false);
@@ -362,7 +311,7 @@ export const useFileUpload = () => {
   return { uploadFile, isUploading, progress };
 };
 
-// HOOKS DE REACT QUERY - CORREGIDOS
+// 📁 HOOKS DE ARCHIVOS
 export const useFiles = (params = {}) => {
   return useQuery({
     queryKey: ['files', params],
@@ -372,138 +321,113 @@ export const useFiles = (params = {}) => {
   });
 };
 
-// Hook alias para mantener compatibilidad con Storage.jsx
+// Hook alias para mantener compatibilidad
 export const useStorageFiles = useFiles;
 
-// Hook para generar reportes
+// 📋 HOOKS DE REPORTES
+export const useReports = (params = {}) => {
+  return useQuery({
+    queryKey: ['reports', params],
+    queryFn: () => reportService.getReports(params),
+    staleTime: 5 * 60 * 1000, // 5 minutos
+    cacheTime: 10 * 60 * 1000, // 10 minutos
+  });
+};
+
+export const useRecentReports = (limit = 5) => {
+  return useQuery({
+    queryKey: ['reports', 'recent', limit],
+    queryFn: () => reportService.getReports({ ordering: '-created_at', limit }),
+    staleTime: 2 * 60 * 1000, // 2 minutos
+  });
+};
+
+export const useReport = (reportId) => {
+  return useQuery({
+    queryKey: ['report', reportId],
+    queryFn: () => reportService.getReport(reportId),
+    enabled: !!reportId,
+    staleTime: 5 * 60 * 1000,
+  });
+};
+
+export const useReportHTML = (reportId) => {
+  return useQuery({
+    queryKey: ['report-html', reportId],
+    queryFn: () => reportService.getReportHTML(reportId),
+    enabled: !!reportId,
+    staleTime: 10 * 60 * 1000, // HTML cambia menos frecuentemente
+  });
+};
+
+// 📊 HOOKS DE MUTACIONES
 export const useGenerateReport = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
     mutationFn: ({ fileId, config }) => reportService.generateReport(fileId, config),
-    onSuccess: () => {
-      // Invalidar cache de reportes para actualizar la lista
+    onSuccess: (data) => {
+      // Invalidar caches relevantes
       queryClient.invalidateQueries({ queryKey: ['reports'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      
+      toast.success('🎉 Reporte generado exitosamente');
+      return data;
     },
-  });
-};
-
-// Hook wrapper para compatibilidad con Reports.jsx
-export const useReportGeneration = () => {
-  const mutation = useGenerateReport();
-  
-  return {
-    generateReport: async (fileId, reportConfig) => {
-      return mutation.mutateAsync({ fileId, reportConfig });
-    },
-    isGenerating: mutation.isLoading
-  };
-};
-
-// Hook para obtener reportes
-export const useReports = (params = {}) => {
-  return useQuery({
-    queryKey: ['reports', params],
-    queryFn: () => reportService.getReports(params),
-    staleTime: 5 * 60 * 1000,
-  });
-};
-
-// Hook para reportes recientes con autenticación
-export const useRecentReports = (limit = 5) => {
-  return useQuery({
-    queryKey: ['reports', 'recent', limit],
-    queryFn: () => reportService.getReports({ ordering: '-created_at', limit }),
-    staleTime: 5 * 60 * 1000,
-  });
-};
-
-// Hook para estadísticas del dashboard con autenticación
-export const useDashboardStats = () => {
-  return useQuery({
-    queryKey: ['dashboard', 'stats'],
-    queryFn: () => dashboardService.getStats(),
-    staleTime: 2 * 60 * 1000, // 2 minutos
-  });
-};
-
-// Hook para obtener HTML de reporte
-export const useReportHTML = (reportId) => {
-  return useQuery({
-    queryKey: ['report-html', reportId],
-    queryFn: async () => {
-      const response = await fetchWithAuth(`${API_BASE_URL}/api/reports/${reportId}/html/`);
-      return response.text();
-    },
-    enabled: !!reportId,
-    retry: 1,
     onError: (error) => {
-      console.error('Error fetching report HTML:', error);
+      console.error('Error generating report:', error);
+      toast.error(`❌ Error generando reporte: ${error.message}`);
     },
   });
 };
 
-
-// Hook para actividad reciente con autenticación
-export const useRecentActivity = (limit = 8) => {
-  return useQuery({
-    queryKey: ['recent-activity', limit],
-    queryFn: () => dashboardService.getActivity(limit),
-    staleTime: 60000,
-    retry: 1,
-    onError: (error) => {
-      console.error('Error fetching recent activity:', error);
-    },
-  });
-};
-
-
-// Función auxiliar para actividad mock
-const getMockActivity = (limit) => {
-  const activities = [
-    {
-      id: 1,
-      description: 'Archivo CSV procesado exitosamente',
-      timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 min ago
-      type: 'file_processed'
-    },
-    {
-      id: 2,
-      description: 'Reporte de seguridad generado',
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), // 2 hours ago
-      type: 'report_generated'
-    },
-    {
-      id: 3,
-      description: 'Análisis de costos completado',
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(), // 5 hours ago
-      type: 'analysis_completed'
-    },
-    {
-      id: 4,
-      description: 'Sistema actualizado',
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), // 1 day ago
-      type: 'system_update'
-    }
-  ];
+export const useDeleteReport = () => {
+  const queryClient = useQueryClient();
   
-  return activities.slice(0, limit);
+  return useMutation({
+    mutationFn: (reportId) => reportService.deleteReport(reportId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      
+      toast.success('🗑️ Reporte eliminado exitosamente');
+    },
+    onError: (error) => {
+      console.error('Error deleting report:', error);
+      toast.error(`❌ Error eliminando reporte: ${error.message}`);
+    },
+  });
 };
 
-// Hook para mutaciones de reportes
-// Hook para mutaciones de reportes
+export const useDeleteFile = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (fileId) => fileService.deleteFile(fileId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      
+      toast.success('🗑️ Archivo eliminado exitosamente');
+    },
+    onError: (error) => {
+      console.error('Error deleting file:', error);
+      toast.error(`❌ Error eliminando archivo: ${error.message}`);
+    },
+  });
+};
+
+// Hook para mutaciones de reportes (ReportViewer y ReportsList)
 export const useReportMutations = () => {
   const queryClient = useQueryClient();
 
   const downloadReport = useMutation({
     mutationFn: ({ reportId, filename }) => reportService.downloadReportPDF(reportId, filename),
     onSuccess: () => {
-      toast.success('Reporte descargado exitosamente');
+      toast.success('📥 Reporte descargado exitosamente');
     },
     onError: (error) => {
       console.error('Error downloading report:', error);
-      toast.error(error.message || 'Error descargando reporte');
+      toast.error(`❌ Error descargando reporte: ${error.message}`);
     },
   });
 
@@ -511,19 +435,74 @@ export const useReportMutations = () => {
     mutationFn: (reportId) => reportService.deleteReport(reportId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reports'] });
-      toast.success('Reporte eliminado exitosamente');
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      
+      toast.success('🗑️ Reporte eliminado exitosamente');
     },
     onError: (error) => {
       console.error('Error deleting report:', error);
-      toast.error(error.message || 'Error eliminando reporte');
+      toast.error(`❌ Error eliminando reporte: ${error.message}`);
     },
   });
 
   return { downloadReport, deleteReport };
 };
 
-export default {
-  fileService,
-  reportService,
-  dashboardService,
+// Hook para crear reportes (ReportGenerator)
+export const useCreateReport = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (data) => {
+      // Transformar los datos para que coincidan con la API
+      return reportService.generateReport(data.csv_file, {
+        title: data.title,
+        description: data.description,
+        type: data.report_type,
+        ...data.generation_config
+      });
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      
+      toast.success('🎉 Reporte creado exitosamente');
+      return data;
+    },
+    onError: (error) => {
+      console.error('Error creating report:', error);
+      toast.error(`❌ Error creando reporte: ${error.message}`);
+    },
+  });
+};
+
+// 📈 HOOKS DE DASHBOARD
+export const useDashboardStats = () => {
+  return useQuery({
+    queryKey: ['dashboard', 'stats'],
+    queryFn: () => dashboardService.getStats(),
+    staleTime: 2 * 60 * 1000, // 2 minutos
+    cacheTime: 5 * 60 * 1000, // 5 minutos
+  });
+};
+
+export const useRecentActivity = (limit = 8) => {
+  return useQuery({
+    queryKey: ['dashboard', 'activity', limit],
+    queryFn: () => dashboardService.getActivity(limit),
+    staleTime: 60 * 1000, // 1 minuto
+    cacheTime: 2 * 60 * 1000, // 2 minutos
+  });
+};
+
+// 🔄 HOOKS DE COMPATIBILIDAD
+export const useReportGeneration = () => {
+  const mutation = useGenerateReport();
+  
+  return {
+    generateReport: async (fileId, reportConfig) => {
+      return mutation.mutateAsync({ fileId, config: reportConfig });
+    },
+    isGenerating: mutation.isPending,
+  };
 };

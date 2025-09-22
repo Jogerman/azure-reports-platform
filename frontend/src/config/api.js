@@ -1,4 +1,4 @@
-// src/config/api.js - VERSIÓN CORREGIDA SIN PROCESS
+// src/config/api.js - VERSIÓN CORREGIDA FINAL SIN DUPLICACIONES
 export const API_CONFIG = {
   // URL base del backend - CORREGIDA
   BASE_URL: (() => {
@@ -15,14 +15,14 @@ export const API_CONFIG = {
   TIMEOUT: 30000, // 30 segundos
   UPLOAD_TIMEOUT: 300000, // 5 minutos para uploads
   
-   ENDPOINTS: {
+  ENDPOINTS: {
     AUTH: {
       LOGIN: '/auth/login/',
       REGISTER: '/auth/register/',
       LOGOUT: '/auth/logout/',
       REFRESH: '/auth/refresh/',
       PROFILE: '/auth/users/profile/',
-      MICROSOFT_LOGIN: '/auth/microsoft/login/',  // CORREGIDO
+      MICROSOFT_LOGIN: '/auth/microsoft/login/',
       MICROSOFT_CALLBACK: '/auth/microsoft/callback/',
     },
     
@@ -35,7 +35,7 @@ export const API_CONFIG = {
     },
     
     REPORTS: {
-      GENERATE: '/reports/generate/',  // CORREGIDO
+      GENERATE: '/reports/generate/',
       LIST: '/reports/',
       DETAIL: '/reports/:id/',
       HTML: '/reports/:id/html/',
@@ -44,7 +44,7 @@ export const API_CONFIG = {
     },
     
     DASHBOARD: {
-      STATS: '/dashboard/stats/',     // CORREGIDO
+      STATS: '/dashboard/stats/',
       ACTIVITY: '/dashboard/activity/',
     },
     
@@ -85,6 +85,8 @@ export const fetchWithAuth = async (url, options = {}) => {
       // Token expirado
       localStorage.removeItem('access_token');
       sessionStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      sessionStorage.removeItem('refresh_token');
       window.location.href = '/';
       throw new Error('Sesión expirada');
     }
@@ -96,18 +98,20 @@ export const fetchWithAuth = async (url, options = {}) => {
   }
 };
 
-
-// Helper para construir URLs
-export const buildUrl = (endpoint, params = {}) => {
+// Helper para construir URLs - FUNCIÓN ÚNICA
+export const buildApiUrl = (endpoint, params = {}) => {
   let url = API_CONFIG.BASE_URL + endpoint;
   
-  // Reemplazar parámetros en la URL
+  // Reemplazar parámetros en la URL (ej: /reports/:id/ -> /reports/123/)
   Object.entries(params).forEach(([key, value]) => {
     url = url.replace(`:${key}`, value);
   });
   
   return url;
 };
+
+// Helper para construir URLs (alias para compatibilidad)
+export const buildUrl = buildApiUrl;
 
 // Helper para obtener headers con autenticación
 export const getAuthHeaders = () => {
@@ -132,6 +136,8 @@ export const handleApiResponse = async (response) => {
         // Token expirado o inválido
         localStorage.removeItem('access_token');
         sessionStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        sessionStorage.removeItem('refresh_token');
         window.location.href = '/';
         throw new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
         
@@ -188,35 +194,15 @@ export const fetchWithRetry = async (url, options = {}, retryCount = 0) => {
 const isProduction = typeof window !== 'undefined' && window.location.hostname !== 'localhost';
 const isDevelopment = !isProduction;
 
-// Configuración específica para desarrollo
+// Configuración específica para desarrollo (OPCIONAL - solo para debugging)
 export const DEV_CONFIG = {
-  // Mock responses para desarrollo sin backend
-  USE_MOCK: isDevelopment && API_CONFIG.BASE_URL.includes('localhost'),
+  // Debug info
+  ENABLE_LOGGING: isDevelopment,
+  ENABLE_DEBUGGING: isDevelopment,
   
-  // Delays simulados para desarrollo
-  MOCK_DELAYS: {
-    UPLOAD: 2000,
-    GENERATE_REPORT: 3000,
-    API_CALL: 500,
-  },
-  
-  // Datos mock
-  MOCK_DATA: {
-    USER: {
-      id: 1,
-      username: 'usuario_demo',
-      email: 'demo@azurereports.com',
-      first_name: 'Usuario',
-      last_name: 'Demo',
-    },
-    
-    STATS: {
-      total_reports: 1,
-      total_files: 2,
-      total_recommendations: 751,
-      potential_savings: 45757,
-    },
-  },
+  // URLs para debugging
+  BACKEND_URL: API_CONFIG.BASE_URL,
+  FRONTEND_URL: isDevelopment ? 'http://localhost:5173' : window.location.origin,
 };
 
 export default API_CONFIG;

@@ -132,7 +132,11 @@ def process_csv_file(csv_file_id):
                 os.unlink(temp_file_path)
             except Exception:
                 pass
-        
+        # Guardar también el path del archivo para acceso posterior
+        if not csv_file.file_path and temp_file_path:
+            csv_file.file_path = temp_file_path
+            csv_file.save()
+
         raise Exception(error_msg)
 @shared_task
 def generate_report(report_id):

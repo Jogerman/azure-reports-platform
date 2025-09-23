@@ -412,32 +412,35 @@ class ReportViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['get'], url_path='html')
     def html(self, request, pk=None):
-        """Generar vista HTML del reporte con caché"""
+        """Generar vista HTML del reporte con el nuevo diseño AUTOZAMA"""
         try:
             report = self.get_object()
             
-            # Intentar obtener del caché primero
-            cached_html = ReportCacheManager.get_cached_html(report)
-            if cached_html and not request.GET.get('refresh'):
-                logger.info(f"Sirviendo HTML desde caché para reporte {report.id}")
-                return HttpResponse(cached_html, content_type='text/html')
+            logger.info(f"Generando HTML para reporte {report.id} con diseño AUTOZAMA")
             
-            logger.info(f"Generando HTML nuevo para reporte {report.id}")
-            
-            # Generar nuevo HTML
+            # ✅ USAR EL NUEVO GENERADOR
             html_content = generate_enhanced_html_report(report)
             
-            # Guardar en caché
-            ReportCacheManager.cache_html(report, html_content)
-            
-            self._track_activity('view_report', f'Reporte HTML generado: {report.title}')
+            # Guardar en caché si tienes esa funcionalidad
+            try:
+                from .utils.cache_manager import ReportCacheManager
+                ReportCacheManager.cache_html(report, html_content)
+            except ImportError:
+                pass  # Sin caché si no está disponible
             
             return HttpResponse(html_content, content_type='text/html')
             
         except Exception as e:
             logger.error(f"Error generando HTML para reporte {pk}: {e}")
-            return HttpResponse(self._generate_error_fallback(str(e)), status=500)
-        
+            return HttpResponse(f'''
+            <html>
+            <body style="font-family: Arial; padding: 40px; text-align: center;">
+                <h1>Error Generating Report</h1>
+                <p>Error: {str(e)}</p>
+                <p>Please try again or contact support.</p>
+            </body>
+            </html>
+            ''', status=500)
 
     def _generate_error_fallback(self, error_message):
         """Genera HTML de error como fallback"""

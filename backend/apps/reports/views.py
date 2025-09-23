@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 
 from .models import Report, CSVFile
 from .serializers import ReportSerializer
-from apps.reports.utils.enhanced_analyzer import generate_enhanced_html_report
+from apps.reports.utils.enhanced_analyzer import EnhancedHTMLReportGenerator
 from .utils.cache_manager import ReportCacheManager
 
 logger = logging.getLogger(__name__)
@@ -412,21 +412,15 @@ class ReportViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['get'], url_path='html')
     def html(self, request, pk=None):
-        """Generar vista HTML del reporte con el nuevo diseño AUTOZAMA"""
+        """Generar vista HTML del reporte con datos reales del CSV"""
         try:
             report = self.get_object()
             
-            logger.info(f"Generando HTML para reporte {report.id} con diseño AUTOZAMA")
+            logger.info(f"Generando HTML para reporte {report.id}")
             
-            # ✅ USAR EL NUEVO GENERADOR
-            html_content = generate_enhanced_html_report(report)
-            
-            # Guardar en caché si tienes esa funcionalidad
-            try:
-                from .utils.cache_manager import ReportCacheManager
-                ReportCacheManager.cache_html(report, html_content)
-            except ImportError:
-                pass  # Sin caché si no está disponible
+            # ✅ USAR LA CLASE CORREGIDA
+            generator = EnhancedHTMLReportGenerator()
+            html_content = generator.generate_complete_html(report)
             
             return HttpResponse(html_content, content_type='text/html')
             

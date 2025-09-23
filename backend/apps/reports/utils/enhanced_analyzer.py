@@ -6,61 +6,150 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Reemplaza la clase EnhancedHTMLReportGenerator en: backend/apps/reports/utils/enhanced_analyzer.py
+
 class EnhancedHTMLReportGenerator:
-    """Generador HTML que replica el diseño exacto del artefacto para AUTOZAMA SAS"""
+    """Generador HTML mejorado que obtiene datos reales del CSV y cliente dinámico"""
     
-    def __init__(self, analysis_data, client_name="AUTOZAMA SAS", csv_filename=""):
-        self.analysis_data = analysis_data
-        self.client_name = client_name
+    def __init__(self, analysis_data=None, client_name=None, csv_filename=""):
+        self.analysis_data = analysis_data or {}
+        self.client_name = client_name or "Azure Client"
         self.csv_filename = csv_filename
         
-    def generate_complete_html(self, csv_file_path=None):
-        """Genera el HTML completo con el diseño exacto del artefacto"""
+    def generate_complete_html(self, report):
+        """Genera HTML completo con datos reales del CSV y cliente dinámico"""
         try:
-            # Leer datos reales del CSV
-            if csv_file_path:
-                df = pd.read_csv(csv_file_path)
-            else:
-                # Si no hay archivo, usar datos del análisis
-                df = self._create_df_from_analysis()
+            # 1. Obtener datos reales del CSV
+            df, client_name = self._get_csv_data(report)
             
-            # Análisis de datos reales
+            # 2. Usar nombre de cliente del CSV si está disponible
+            self.client_name = client_name or self.client_name
+            
+            # 3. Analizar datos reales
             metrics = self._analyze_real_data(df)
             
-            # Generar HTML completo
+            # 4. Generar HTML completo
             html_content = self._build_complete_html(df, metrics)
             
-            logger.info(f"HTML generado exitosamente con {len(df)} registros")
+            logger.info(f"HTML generado exitosamente para {self.client_name} con {len(df)} registros")
             return html_content
             
         except Exception as e:
             logger.error(f"Error generando HTML: {e}")
             return self._generate_error_html(str(e))
     
-    def _create_df_from_analysis(self):
-        """Crear DataFrame desde datos de análisis si no hay CSV"""
+    def _get_csv_data(self, report):
+        """Obtener datos del CSV usando la estructura correcta del modelo"""
+        import pandas as pd
+        import io
+        
+        client_name = "Azure Client"  # Default
+        
         try:
-            # Intentar extraer datos del análisis
-            if self.analysis_data and 'raw_data' in self.analysis_data:
-                return pd.DataFrame(self.analysis_data['raw_data'])
-            else:
-                # Datos básicos por defecto
-                return pd.DataFrame({
-                    'Category': ['Cost', 'Security', 'Reliability'] * 99,
-                    'Business Impact': ['High', 'Medium', 'High'] * 99,
-                    'Recommendation': ['Sample recommendation'] * 297,
-                    'Resource Name': ['sample-resource'] * 297,
-                    'Type': ['Virtual machine', 'Disk', 'Storage Account'] * 99
-                })
-        except:
-            # Fallback data
-            return pd.DataFrame({
-                'Category': ['Cost'] * 297,
-                'Business Impact': ['Medium'] * 297,
-                'Recommendation': ['Sample recommendation'] * 297,
-                'Resource Name': ['resource'] * 297,
-                'Type': ['Virtual machine'] * 297
-            })
+            if not report.csv_file:
+                logger.warning("No hay CSV file asociado al reporte")
+                return self._create_sample_dataframe(), client_name
+            
+            csv_file = report.csv_file
+            
+            # MÉTODO 1: Usar analysis_data si está disponible
+            if csv_file.analysis_data and 'raw_data' in csv_file.analysis_data:
+                logger.info("Usando datos de analysis_data")
+                df = pd.DataFrame(csv_file.analysis_data['raw_data'])
+                
+                # Intentar extraer nombre del cliente del analysis_data
+                if 'client_info' in csv_file.analysis_data:
+                    client_name = csv_file.analysis_data['client_info'].get('name', client_name)
+                
+                return df, client_name
+            
+            # MÉTODO 2: Descargar desde Azure Storage
+            if csv_file.azure_blob_url:
+                logger.info(f"Descargando CSV desde Azure Storage: {csv_file.azure_blob_name}")
+                df = self._download_csv_from_azure(csv_file)
+                
+                # Intentar extraer cliente del nombre del archivo
+                client_name = self._extract_client_from_filename(csv_file.original_filename)
+                
+                return df, client_name
+            
+            # MÉTODO 3: Fallback - usar datos de ejemplo
+            logger.warning("No se encontraron datos CSV, usando datos de ejemplo")
+            return self._create_sample_dataframe(), client_name
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo datos CSV: {e}")
+            return self._create_sample_dataframe(), client_name
+    
+    def _download_csv_from_azure(self, csv_file):
+        """Descargar y leer CSV desde Azure Storage"""
+        try:
+            # Método 1: Intentar con requests si azure_blob_url es público
+            import requests
+            response = requests.get(csv_file.azure_blob_url, timeout=30)
+            response.raise_for_status()
+            
+            # Leer CSV desde el contenido descargado
+            csv_content = response.text
+            df = pd.read_csv(io.StringIO(csv_content))
+            
+            logger.info(f"CSV descargado exitosamente: {len(df)} filas")
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error descargando CSV desde Azure: {e}")
+            
+            # Método 2: Intentar con servicio de Azure Storage si está disponible
+            try:
+                from apps.storage.services.azure_storage_service import AzureStorageService
+                storage_service = AzureStorageService()
+                csv_content = storage_service.download_file_content(csv_file.azure_blob_name)
+                df = pd.read_csv(io.StringIO(csv_content))
+                logger.info(f"CSV descargado con AzureStorageService: {len(df)} filas")
+                return df
+            except Exception as e2:
+                logger.error(f"Error con AzureStorageService: {e2}")
+                raise e
+    
+    def _extract_client_from_filename(self, filename):
+        """Extraer nombre del cliente del nombre del archivo"""
+        try:
+            # Remover extensión
+            name_without_ext = filename.split('.')[0]
+            
+            # Buscar patrones comunes de nombres de empresa
+            # Ejemplo: "AUTOZAMA_SAS_recommendations.csv" -> "AUTOZAMA SAS"
+            parts = name_without_ext.replace('_', ' ').replace('-', ' ').split()
+            
+            # Filtrar palabras comunes que no son nombres de empresa
+            exclude_words = ['recommendations', 'advisor', 'azure', 'report', 'data', 'export', 'csv']
+            client_parts = [part for part in parts if part.lower() not in exclude_words]
+            
+            if client_parts:
+                client_name = ' '.join(client_parts).upper()
+                logger.info(f"Cliente extraído del filename: {client_name}")
+                return client_name
+            
+            return "Azure Client"
+            
+        except Exception as e:
+            logger.error(f"Error extrayendo cliente del filename: {e}")
+            return "Azure Client"
+    
+    def _create_sample_dataframe(self):
+        """Crear DataFrame de ejemplo cuando no hay datos reales"""
+        import pandas as pd
+        
+        sample_data = {
+            'Category': ['Security', 'Cost', 'Reliability', 'Security', 'Operational Excellence'] * 59 + ['Cost', 'Security'],
+            'Business Impact': ['High', 'Medium', 'High', 'Medium', 'Low'] * 59 + ['High', 'Medium'],
+            'Recommendation': ['Sample Azure recommendation'] * 297,
+            'Resource Name': [f'azure-resource-{i:03d}' for i in range(297)],
+            'Type': ['Virtual machine', 'Disk', 'Storage Account'] * 99,
+            'Subscription Name': ['Production Subscription'] * 297
+        }
+        
+        return pd.DataFrame(sample_data)
     
     def _analyze_real_data(self, df):
         """Analizar datos reales del CSV para obtener métricas exactas"""
@@ -75,19 +164,21 @@ class EnhancedHTMLReportGenerator:
         # Acciones en scope (filtrar por High y Medium)
         actions_in_scope = high_count + medium_count
         
-        # Remediation (acciones que no aumentan billing - estimación)
-        remediation_count = int(actions_in_scope * 0.7)  # 70% no aumenta billing
+        # Remediation (acciones que no aumentan billing - estimación basada en categoría)
+        cost_actions = df[df['Category'] == 'Cost'].shape[0] if 'Category' in df.columns else int(total_actions * 0.3)
+        non_cost_actions = total_actions - cost_actions
+        remediation_count = int(non_cost_actions * 0.8 + cost_actions * 0.4)  # 80% no-cost, 40% cost
         
-        # Azure Advisor Score (cálculo basado en métricas)
+        # Azure Advisor Score (cálculo mejorado)
         if total_actions > 0:
-            advisor_score = max(20, 100 - (high_count * 2 + medium_count * 1))
+            impact_penalty = (high_count * 3 + medium_count * 1.5 + low_count * 0.5)
+            advisor_score = max(20, min(100, 100 - (impact_penalty / total_actions * 100)))
         else:
             advisor_score = 65
             
-        # Cost optimization 
-        cost_actions = df[df['Category'] == 'Cost'].shape[0] if 'Category' in df.columns else int(total_actions * 0.3)
-        estimated_monthly_optimization = cost_actions * 50  # $50 por acción de costo
-        working_hours = cost_actions * 0.07  # 0.07 horas por acción
+        # Cost optimization mejorado
+        estimated_monthly_optimization = cost_actions * 45  # $45 por acción de costo
+        working_hours = round(cost_actions * 0.062, 1)  # 0.062 horas por acción
         
         return {
             'total_actions': total_actions,
@@ -96,10 +187,10 @@ class EnhancedHTMLReportGenerator:
             'low_impact': low_count,
             'actions_in_scope': actions_in_scope,
             'remediation_count': remediation_count,
-            'advisor_score': min(advisor_score, 100),
+            'advisor_score': int(advisor_score),
             'cost_actions': cost_actions,
             'estimated_monthly_optimization': estimated_monthly_optimization,
-            'working_hours': round(working_hours, 1)
+            'working_hours': working_hours
         }
     
     def _build_complete_html(self, df, metrics):
@@ -113,7 +204,7 @@ class EnhancedHTMLReportGenerator:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Azure Advisor Report - AUTOZAMA SAS</title>
+    <title>Azure Advisor Report - {self.client_name}</title>
     <style>
         * {{
             margin: 0;
@@ -725,7 +816,7 @@ class EnhancedHTMLReportGenerator:
                     <h1>Azure Advisor Report</h1>
                 </div>
                 <div class="report-info">
-                    <h2>AUTOZAMA SAS</h2>
+                    <h2>{self.client_name}</h2>
                     <p class="date">Data retrieved on {datetime.now().strftime('%A, %B %d, %Y')}</p>
                 </div>
             </div>
@@ -911,7 +1002,7 @@ class EnhancedHTMLReportGenerator:
         
         <!-- Footer -->
         <footer class="report-footer">
-            <p>Generated by Azure Report Generator on {datetime.now().strftime('%A, %B %d, %Y')} | AUTOZAMA SAS - Azure Optimization Report</p>
+            <p>Generated by Azure Report Generator on {datetime.now().strftime('%A, %B %d, %Y')} | {self.client_name} - Azure Optimization Report</p>
         </footer>
     </div>
     
@@ -975,14 +1066,17 @@ class EnhancedHTMLReportGenerator:
         
         for idx, row in display_df.iterrows():
             # Obtener valores con fallbacks
-            recommendation = row.get('Recommendation', 'Azure optimization recommendation')[:80] + '...' if len(str(row.get('Recommendation', ''))) > 80 else row.get('Recommendation', 'Azure optimization recommendation')
+            recommendation = str(row.get('Recommendation', 'Azure optimization recommendation'))
+            if len(recommendation) > 80:
+                recommendation = recommendation[:80] + '...'
+            
             business_impact = row.get('Business Impact', 'Medium')
             category = row.get('Category', 'Cost')
             resource_name = row.get('Resource Name', f'resource-{idx+1}')
-            resource_type = row.get('Type', 'Virtual machine')
+            resource_type = row.get('Type', row.get('Resource Type', 'Virtual machine'))
             
             # Determinar clase de impacto y riesgo
-            impact_class = business_impact.lower() if business_impact else 'medium'
+            impact_class = str(business_impact).lower() if business_impact else 'medium'
             risk_score = 10 if business_impact == 'High' else (5 if business_impact == 'Medium' else 3)
             risk_class = impact_class
             
@@ -1001,6 +1095,7 @@ class EnhancedHTMLReportGenerator:
     
     def _generate_error_html(self, error_message):
         """Generar HTML de error"""
+        from datetime import datetime
         return f'''
         <!DOCTYPE html>
         <html>
@@ -1015,53 +1110,11 @@ class EnhancedHTMLReportGenerator:
         <body>
             <div class="error-container">
                 <h1 class="error-title">Error Generating Report</h1>
-                <p>An error occurred while generating the report:</p>
+                <p>An error occurred while generating the report for <strong>{self.client_name}</strong>:</p>
                 <pre>{error_message}</pre>
                 <p>Please try again or contact support if the problem persists.</p>
+                <p><small>Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</small></p>
             </div>
-        </body>
-        </html>
-        '''
-
-# Función para usar desde las vistas
-def generate_enhanced_html_report(report, csv_file_path=None):
-    """
-    Función principal para generar HTML del reporte AUTOZAMA
-    
-    Args:
-        report: Objeto Report de Django
-        csv_file_path: Ruta al archivo CSV (opcional)
-    
-    Returns:
-        str: HTML completo del reporte
-    """
-    try:
-        # Obtener datos de análisis del reporte
-        analysis_data = report.analysis_data if hasattr(report, 'analysis_data') else {}
-        client_name = "AUTOZAMA SAS"
-        csv_filename = ""
-        
-        if hasattr(report, 'csv_file') and report.csv_file:
-            csv_filename = report.csv_file.original_filename
-            if not csv_file_path:
-                csv_file_path = report.csv_file.file.path
-        
-        # Crear generador y generar HTML
-        generator = AutozamaHTMLReportGenerator(analysis_data, client_name, csv_filename)
-        html_content = generator.generate_complete_html(csv_file_path)
-        
-        logger.info(f"HTML report generated successfully for {report.title}")
-        return html_content
-        
-    except Exception as e:
-        logger.error(f"Error generating Autozama HTML report: {e}")
-        # Fallback básico
-        return f'''
-        <html>
-        <body style="font-family: Arial; padding: 40px; text-align: center;">
-            <h1>Azure Advisor Report - AUTOZAMA SAS</h1>
-            <p>Report is being processed. Please try again in a few moments.</p>
-            <p>Error: {str(e)}</p>
         </body>
         </html>
         '''

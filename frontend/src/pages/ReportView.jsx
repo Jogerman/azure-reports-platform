@@ -25,46 +25,45 @@ const ReportView = () => {
   
   const { data: reportHTML, isLoading, error, refetch } = useReportHTML(id);
 
-  const handleDownloadPDF = async () => {
-    try {
-      // ✅ USAR buildApiUrl para URL consistente
-      const downloadUrl = buildApiUrl('/reports/:id/download/', { id });
-      
-      // ✅ USAR access_token consistente
-      const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
-      
-      console.log('🔽 Descargando PDF desde:', downloadUrl);
-      
-      // Descargar archivo
-      const response = await fetch(downloadUrl, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/pdf',
-        }
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Error descargando:', response.status, errorText);
-        throw new Error(`Error ${response.status}: ${errorText}`);
+const handleDownloadPDF = async () => {
+  try {
+    // ✅ CONSTRUIR URL MANUALMENTE PARA EVITAR BUGS
+    const downloadUrl = `http://localhost:8000/api/reports/${id}/download/`;
+    
+    const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
+    
+    console.log('🔽 Descargando PDF desde:', downloadUrl);
+    console.log('🔑 Token:', token ? 'Presente' : 'Ausente');
+    
+    const response = await fetch(downloadUrl, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/pdf',
       }
+    });
 
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `reporte_${id.slice(0, 8)}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      
-      toast.success('Reporte descargado exitosamente');
-    } catch (error) {
-      console.error('❌ Error descargando reporte:', error);
-      toast.error(`Error descargando reporte: ${error.message}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Error descargando:', response.status, errorText);
+      throw new Error(`Error ${response.status}: ${errorText}`);
     }
-  };
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `reporte_${id.slice(0, 8)}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    
+    toast.success('Reporte descargado exitosamente');
+  } catch (error) {
+    console.error('❌ Error descargando reporte:', error);
+    toast.error(`Error descargando reporte: ${error.message}`);
+  }
+};
 
 
   const handleShare = () => {

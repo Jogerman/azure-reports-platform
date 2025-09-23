@@ -1493,6 +1493,8 @@ class ReportViewSet(viewsets.ModelViewSet):
                 'message': 'Error interno generando PDF',
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+
     @action(detail=True, methods=['post'], url_path='regenerate-pdf')
     def regenerate_pdf(self, request, pk=None):
         """Regenerar PDF de un reporte existente"""
@@ -1525,7 +1527,7 @@ class ReportViewSet(viewsets.ModelViewSet):
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
-    @action(detail=True, methods=['get'], url_path='download-pdf')
+    @action(detail=True, methods=['get'], url_path='download')
     def download_pdf(self, request, pk=None):
         """Descargar PDF del reporte - VERSIÓN CORREGIDA"""
         try:

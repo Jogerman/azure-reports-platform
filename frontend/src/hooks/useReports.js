@@ -153,37 +153,50 @@ const reportService = {
         throw error;
       }
     },
-
-    async downloadReportPDF(reportId, filename = null) {
-      try {
-        // ✅ USAR buildApiUrl consistente y endpoint correcto
-        const response = await fetchWithAuth(buildApiUrl('/reports/:id/download/', { id: reportId }), {
-          headers: {
-            'Accept': 'application/pdf'
-          }
-        });
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`HTTP ${response.status}: ${errorText}`);
+  async downloadReportPDF(reportId, filename = null) {
+    try {
+      // ✅ URL MANUAL PARA EVITAR BUGS DE buildApiUrl
+      const downloadUrl = `http://localhost:8000/api/reports/${reportId}/download/`;
+      
+      console.log('📥 Descargando PDF desde:', downloadUrl);
+      
+      const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
+      
+      const response = await fetch(downloadUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/pdf'
         }
-        
-        const blob = await response.blob();
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = filename || `reporte_${reportId.slice(0, 8)}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(downloadUrl);
-        
-        return true;
-      } catch (error) {
-        console.error('❌ Error downloading report:', error);
-        throw error;
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Error response:', response.status, errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
-    },
+      
+      const blob = await response.blob();
+      
+      if (blob.size === 0) {
+        throw new Error('El archivo PDF está vacío');
+      }
+      
+      const downloadBlobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadBlobUrl;
+      link.download = filename || `reporte_${reportId.slice(0, 8)}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadBlobUrl);
+      
+      console.log('✅ PDF descargado exitosamente');
+      return true;
+    } catch (error) {
+      console.error('❌ Error downloading report:', error);
+      throw error;
+    }
+  },
 
 
   async deleteReport(reportId) {

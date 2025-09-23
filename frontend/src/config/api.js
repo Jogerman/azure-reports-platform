@@ -106,11 +106,19 @@ export const fetchWithAuth = async (url, options = {}) => {
 export const buildApiUrl = (endpoint, params = {}) => {
   let url = API_CONFIG.BASE_URL + endpoint;
   
-  // Reemplazar parámetros en la URL (ej: /reports/:id/ -> /reports/123/)
+  // ✅ CORRECCIÓN: Usar template literal en lugar de replace
+  if (params.id) {
+    url = url.replace(':id', params.id);
+  }
+  
+  // Para otros parámetros si los hay
   Object.entries(params).forEach(([key, value]) => {
-    url = url.replace(`:${key}`, value);
+    if (key !== 'id') { // Ya procesamos id arriba
+      url = url.replace(`:${key}`, value);
+    }
   });
   
+  console.log('🔗 URL construida:', url); // Para debugging
   return url;
 };
 

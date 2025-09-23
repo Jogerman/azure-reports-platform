@@ -192,9 +192,12 @@ class CompleteReportService:
             return None
     
     def _update_report_with_pdf_info(self, report, pdf_info: Dict[str, Any]):
-        """Actualizar modelo Report con información del PDF"""
+        """Actualizar modelo Report con información del PDF - CORREGIDO"""
         try:
+            # CORRECCIÓN PRINCIPAL: Guardar la URL del blob
             report.pdf_file_url = pdf_info['blob_url']
+            
+            # Guardar blob_name si el campo existe
             if hasattr(report, 'pdf_azure_blob_name'):
                 report.pdf_azure_blob_name = pdf_info['blob_name']
             
@@ -204,17 +207,24 @@ class CompleteReportService:
             
             report.analysis_data['pdf_info'] = {
                 'blob_name': pdf_info['blob_name'],
+                'blob_url': pdf_info['blob_url'],  # Guardar también aquí como backup
                 'size_bytes': pdf_info['size_bytes'],
                 'uploaded_at': pdf_info['uploaded_at'],
                 'container': pdf_info['container']
             }
             
-            report.save(update_fields=['pdf_file_url', 'analysis_data'])
-            logger.info("✅ Report actualizado con info PDF")
+            # IMPORTANTE: Especificar todos los campos a actualizar
+            update_fields = ['pdf_file_url', 'analysis_data']
+            if hasattr(report, 'pdf_azure_blob_name'):
+                update_fields.append('pdf_azure_blob_name')
+            
+            report.save(update_fields=update_fields)
+            
+            logger.info(f"✅ Report actualizado con PDF URL: {report.pdf_file_url}")
             
         except Exception as e:
-            logger.error(f"Error actualizando Report: {e}")
-    
+            logger.error(f"Error actualizando Report con PDF info: {e}")
+            
     def _update_csvfile_with_dataframe_info(self, csv_file, dataframe_info: Dict[str, Any]):
         """Actualizar modelo CSVFile con información del DataFrame"""
         try:

@@ -1527,27 +1527,52 @@ class ReportViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['get'], url_path='download-pdf')
     def download_pdf(self, request, pk=None):
-        """Descargar PDF del reporte si existe"""
+        """Descargar PDF del reporte - VERSIÓN CORREGIDA"""
         try:
             report = self.get_object()
             
-            if not report.pdf_file_url:
+            logger.info(f"Intentando descargar PDF para reporte {report.id}")
+            logger.info(f"PDF URL en BD: {report.pdf_file_url}")
+            
+            # Verificar si existe PDF en analysis_data como fallback
+            pdf_url = report.pdf_file_url
+            
+            if not pdf_url and report.analysis_data and 'pdf_info' in report.analysis_data:
+                pdf_info = report.analysis_data['pdf_info']
+                pdf_url = pdf_info.get('blob_url')
+                logger.info(f"PDF URL desde analysis_data: {pdf_url}")
+            
+            if not pdf_url:
+                logger.warning(f"No PDF URL para reporte {report.id}")
                 return Response({
                     'message': 'PDF no disponible. Genere primero el PDF.',
-                    'actions': ['generate-pdf']
+                    'actions': ['generate-pdf'],
+                    'report_id': str(report.id),
+                    'status': report.status
                 }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Verificar que la URL es válida
+            if not pdf_url.startswith('https://'):
+                logger.error(f"URL inválida: {pdf_url}")
+                return Response({
+                    'message': 'URL de PDF inválida',
+                    'error': 'Invalid PDF URL format'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            logger.info(f"Redirigiendo a: {pdf_url}")
             
             # Redirigir a la URL de Azure (con SAS token)
             from django.http import HttpResponseRedirect
-            return HttpResponseRedirect(report.pdf_file_url)
+            return HttpResponseRedirect(pdf_url)
             
         except Exception as e:
-            logger.error(f"Error descargando PDF: {e}")
+            logger.error(f"Error descargando PDF para reporte {pk}: {e}")
             return Response({
                 'message': 'Error descargando PDF',
-                'error': str(e)
+                'error': str(e),
+                'report_id': str(pk) if pk else None
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        
     @action(detail=True, methods=['get'], url_path='azure-info')
     def azure_info(self, request, pk=None):
         """Obtener información sobre archivos en Azure Storage"""
@@ -1649,6 +1674,42 @@ class ReportViewSet(viewsets.ModelViewSet):
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+    @action(detail=True, methods=['post'], url_path='fix-pdf')
+    def fix_pdf(self, request, pk=None):
+        """Regenerar PDF y corregir URLs - TEMPORAL para debugging"""
+        try:
+            report = self.get_object()
+            
+            logger.info(f"Corrigiendo PDF para reporte {report.id}")
+            
+            from apps.storage.services.complete_report_service import complete_report_service
+            result = complete_report_service.regenerate_report_pdf(report)
+            
+            if result['success']:
+                # Refrescar desde DB para verificar
+                report.refresh_from_db()
+                
+                return Response({
+                    'message': 'PDF regenerado y corregido exitosamente',
+                    'pdf_url': report.pdf_file_url,
+                    'blob_url': result['pdf_url'],
+                    'filename': result['pdf_filename'],
+                    'size_bytes': result['size_bytes'],
+                    'report_status': report.status
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'message': 'Error regenerando PDF',
+                    'error': result['error']
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+        except Exception as e:
+            logger.error(f"Error en fix_pdf: {e}")
+            return Response({
+                'message': 'Error corrigiendo PDF',
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     # Endpoint para probar servicios
     @action(detail=False, methods=['get'], url_path='test-services')
     def test_services(self, request):

@@ -3,7 +3,7 @@ export const API_CONFIG = {
   // URL base del backend - CORREGIDA
   BASE_URL: (() => {
     // Para producción
-    if (window.location.hostname !== 'localhost') {
+    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
       return window.location.origin + '/api';
     }
     
@@ -137,11 +137,13 @@ export const handleApiResponse = async (response) => {
     // Manejar errores específicos
     switch (response.status) {
       case 401:
-        // Token expirado o inválido
+        // Token expirado o inválido - limpiar TODO
         localStorage.removeItem('access_token');
         sessionStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
         sessionStorage.removeItem('refresh_token');
+        localStorage.removeItem('user');
+        sessionStorage.removeItem('user');
         window.location.href = '/';
         throw new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
         

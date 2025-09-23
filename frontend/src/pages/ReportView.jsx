@@ -16,6 +16,7 @@ import {
 import { useReportHTML } from '../hooks/useReports';
 import Loading from '../components/common/Loading';
 import { formatRelativeTime } from '../utils/helpers';
+import { buildApiUrl } from '../config/api';
 import toast from 'react-hot-toast';
 
 const ReportView = () => {
@@ -26,19 +27,26 @@ const ReportView = () => {
 
   const handleDownloadPDF = async () => {
     try {
-      // Crear enlace de descarga
-      const downloadUrl = `${import.meta.env.VITE_API_URL}/reports/${id}/download/`;
-      const token = localStorage.getItem('token');
+      // ✅ USAR buildApiUrl para URL consistente
+      const downloadUrl = buildApiUrl('/reports/:id/download/', { id });
+      
+      // ✅ USAR access_token consistente
+      const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
+      
+      console.log('🔽 Descargando PDF desde:', downloadUrl);
       
       // Descargar archivo
       const response = await fetch(downloadUrl, {
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/pdf',
         }
       });
 
       if (!response.ok) {
-        throw new Error('Error descargando reporte');
+        const errorText = await response.text();
+        console.error('❌ Error descargando:', response.status, errorText);
+        throw new Error(`Error ${response.status}: ${errorText}`);
       }
 
       const blob = await response.blob();
@@ -53,10 +61,11 @@ const ReportView = () => {
       
       toast.success('Reporte descargado exitosamente');
     } catch (error) {
-      console.error('Error descargando reporte:', error);
-      toast.error('Error descargando reporte');
+      console.error('❌ Error descargando reporte:', error);
+      toast.error(`Error descargando reporte: ${error.message}`);
     }
   };
+
 
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href);

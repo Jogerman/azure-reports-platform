@@ -139,44 +139,52 @@ const reportService = {
   },
 
   async getReportHTML(reportId) {
-    try {
-      const response = await fetchWithAuth(buildApiUrl('/reports/:id/html/', { id: reportId }));
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: Error obteniendo HTML del reporte`);
+      try {
+        // ✅ USAR buildApiUrl consistente
+        const response = await fetchWithAuth(buildApiUrl('/reports/:id/html/', { id: reportId }));
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: Error obteniendo HTML del reporte`);
+        }
+        
+        return response.text(); // HTML como texto
+      } catch (error) {
+        console.error('❌ Error obteniendo HTML del reporte:', error);
+        throw error;
       }
-      
-      return response.text();
-    } catch (error) {
-      console.error('❌ Error obteniendo HTML del reporte:', error);
-      throw error;
-    }
-  },
+    },
 
-  async downloadReportPDF(reportId, filename) {
-    try {
-      const response = await fetchWithAuth(buildApiUrl('/reports/:id/download/', { id: reportId }));
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: Error descargando reporte`);
+    async downloadReportPDF(reportId, filename = null) {
+      try {
+        // ✅ USAR buildApiUrl consistente y endpoint correcto
+        const response = await fetchWithAuth(buildApiUrl('/reports/:id/download/', { id: reportId }), {
+          headers: {
+            'Accept': 'application/pdf'
+          }
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+        
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename || `reporte_${reportId.slice(0, 8)}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+        
+        return true;
+      } catch (error) {
+        console.error('❌ Error downloading report:', error);
+        throw error;
       }
-      
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = filename || `reporte_${reportId}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(downloadUrl);
-      
-      return true;
-    } catch (error) {
-      console.error('❌ Error downloading report:', error);
-      throw error;
-    }
-  },
+    },
+
 
   async deleteReport(reportId) {
     try {

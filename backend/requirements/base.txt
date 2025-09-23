@@ -27,6 +27,7 @@ azure-identity>=1.14.0
 # PDF Generation
 Pillow>=10.1.0
 reportlab>=4.0.4
+weasyprint
 
 # API Documentation
 drf-spectacular==0.26.5

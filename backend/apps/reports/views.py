@@ -1438,3 +1438,283 @@ class ReportViewSet(viewsets.ModelViewSet):
             )
         except Exception as e:
             logger.warning(f"Error registrando actividad: {e}")
+
+    @action(detail=True, methods=['post'], url_path='generate-pdf')
+    def generate_pdf(self, request, pk=None):
+        """Generar PDF completo del reporte con almacenamiento en Azure"""
+        try:
+            report = self.get_object()
+            
+            logger.info(f"Iniciando generación PDF para reporte {report.id}")
+            
+            # Importar servicio completo
+            from apps.storage.services.complete_report_service import complete_report_service
+            
+            # Generar reporte completo
+            result = complete_report_service.generate_complete_report(report)
+            
+            if result['success']:
+                response_data = {
+                    'message': 'PDF generado exitosamente',
+                    'report_id': str(report.id),
+                    'client_name': result.get('client_name', 'Azure Client'),
+                    'pdf_generated': result['pdf_generated'],
+                    'pdf_uploaded': result['pdf_uploaded'],
+                    'dataframe_uploaded': result['dataframe_uploaded'],
+                    'urls': result['urls'],
+                    'metadata': {
+                        'pdf_size': result.get('pdf_size'),
+                        'pdf_filename': result.get('pdf_filename')
+                    }
+                }
+                
+                if result['urls'].get('pdf'):
+                    response_data['pdf_download_url'] = result['urls']['pdf']
+                
+                logger.info(f"PDF generado exitosamente para reporte {report.id}")
+                return Response(response_data, status=status.HTTP_201_CREATED)
+            else:
+                error_response = {
+                    'message': 'Error generando PDF',
+                    'errors': result['errors'],
+                    'partial_success': {
+                        'html_generated': result['html_generated'],
+                        'pdf_generated': result['pdf_generated'],
+                        'pdf_uploaded': result['pdf_uploaded']
+                    }
+                }
+                
+                logger.error(f"Error generando PDF para reporte {report.id}: {result['errors']}")
+                return Response(error_response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+        except Exception as e:
+            logger.error(f"Error en generate_pdf para reporte {pk}: {e}")
+            return Response({
+                'message': 'Error interno generando PDF',
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    @action(detail=True, methods=['post'], url_path='regenerate-pdf')
+    def regenerate_pdf(self, request, pk=None):
+        """Regenerar PDF de un reporte existente"""
+        try:
+            report = self.get_object()
+            
+            logger.info(f"Regenerando PDF para reporte {report.id}")
+            
+            from apps.storage.services.complete_report_service import complete_report_service
+            
+            result = complete_report_service.regenerate_report_pdf(report)
+            
+            if result['success']:
+                return Response({
+                    'message': 'PDF regenerado exitosamente',
+                    'pdf_download_url': result['pdf_url'],
+                    'pdf_filename': result['pdf_filename'],
+                    'size_bytes': result['size_bytes']
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'message': 'Error regenerando PDF',
+                    'error': result['error']
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+        except Exception as e:
+            logger.error(f"Error regenerando PDF: {e}")
+            return Response({
+                'message': 'Error interno regenerando PDF',
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=True, methods=['get'], url_path='download-pdf')
+    def download_pdf(self, request, pk=None):
+        """Descargar PDF del reporte si existe"""
+        try:
+            report = self.get_object()
+            
+            if not report.pdf_file_url:
+                return Response({
+                    'message': 'PDF no disponible. Genere primero el PDF.',
+                    'actions': ['generate-pdf']
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Redirigir a la URL de Azure (con SAS token)
+            from django.http import HttpResponseRedirect
+            return HttpResponseRedirect(report.pdf_file_url)
+            
+        except Exception as e:
+            logger.error(f"Error descargando PDF: {e}")
+            return Response({
+                'message': 'Error descargando PDF',
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['get'], url_path='azure-info')
+    def azure_info(self, request, pk=None):
+        """Obtener información sobre archivos en Azure Storage"""
+        try:
+            report = self.get_object()
+            
+            azure_info = {
+                'report_id': str(report.id),
+                'pdf_available': bool(report.pdf_file_url),
+                'pdf_url': report.pdf_file_url,
+            }
+            
+            # Información del PDF desde analysis_data
+            if report.analysis_data and 'pdf_info' in report.analysis_data:
+                azure_info['pdf_info'] = report.analysis_data['pdf_info']
+            
+            # Información del DataFrame desde CSV
+            if report.csv_file and report.csv_file.analysis_data:
+                csv_data = report.csv_file.analysis_data
+                if 'azure_dataframe' in csv_data:
+                    azure_info['dataframe_info'] = csv_data['azure_dataframe']
+            
+            # Estado del Azure Storage
+            try:
+                from apps.storage.services.enhanced_azure_storage import enhanced_azure_storage
+                azure_info['azure_storage_status'] = enhanced_azure_storage.get_storage_info()
+            except Exception as e:
+                azure_info['azure_storage_status'] = {'status': 'error', 'error': str(e)}
+            
+            return Response(azure_info, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo info Azure: {e}")
+            return Response({
+                'message': 'Error obteniendo información de Azure',
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # Función auxiliar para procesar reportes en lote
+    @action(detail=False, methods=['post'], url_path='batch-generate-pdfs')
+    def batch_generate_pdfs(self, request):
+        """Generar PDFs para múltiples reportes"""
+        try:
+            report_ids = request.data.get('report_ids', [])
+            
+            if not report_ids:
+                return Response({
+                    'message': 'Se requiere lista de report_ids'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Filtrar reportes del usuario
+            reports = self.get_queryset().filter(id__in=report_ids)
+            
+            results = []
+            success_count = 0
+            error_count = 0
+            
+            from apps.storage.services.complete_report_service import complete_report_service
+            
+            for report in reports:
+                try:
+                    result = complete_report_service.generate_complete_report(report)
+                    
+                    report_result = {
+                        'report_id': str(report.id),
+                        'success': result['success'],
+                        'client_name': result.get('client_name'),
+                        'pdf_url': result['urls'].get('pdf') if result['success'] else None
+                    }
+                    
+                    if result['success']:
+                        success_count += 1
+                    else:
+                        error_count += 1
+                        report_result['errors'] = result['errors']
+                    
+                    results.append(report_result)
+                    
+                except Exception as e:
+                    error_count += 1
+                    results.append({
+                        'report_id': str(report.id),
+                        'success': False,
+                        'error': str(e)
+                    })
+            
+            return Response({
+                'message': f'Procesamiento completado: {success_count} exitosos, {error_count} errores',
+                'total_processed': len(results),
+                'success_count': success_count,
+                'error_count': error_count,
+                'results': results
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error en batch_generate_pdfs: {e}")
+            return Response({
+                'message': 'Error procesando reportes en lote',
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # Endpoint para probar servicios
+    @action(detail=False, methods=['get'], url_path='test-services')
+    def test_services(self, request):
+        """Probar disponibilidad de servicios PDF y Azure"""
+        try:
+            service_status = {}
+            
+            # Probar PDF Service
+            try:
+                from apps.storage.services.pdf_generator_service import PDFGeneratorService
+                pdf_service = PDFGeneratorService()
+                service_status['pdf_service'] = {
+                    'available': True,
+                    'engines': pdf_service.available_engines,
+                    'preferred_engine': pdf_service.preferred_engine
+                }
+            except Exception as e:
+                service_status['pdf_service'] = {
+                    'available': False,
+                    'error': str(e)
+                }
+            
+            # Probar Azure Storage
+            try:
+                from apps.storage.services.enhanced_azure_storage import enhanced_azure_storage
+                service_status['azure_storage'] = enhanced_azure_storage.get_storage_info()
+            except Exception as e:
+                service_status['azure_storage'] = {
+                    'available': False,
+                    'error': str(e)
+                }
+            
+            # Probar Complete Report Service
+            try:
+                from apps.storage.services.complete_report_service import complete_report_service
+                service_status['complete_report_service'] = {
+                    'available': True,
+                    'pdf_service_ready': complete_report_service.pdf_service is not None,
+                    'azure_service_ready': complete_report_service.azure_service is not None and complete_report_service.azure_service.is_available()
+                }
+            except Exception as e:
+                service_status['complete_report_service'] = {
+                    'available': False,
+                    'error': str(e)
+                }
+            
+            # Determinar estado general
+            all_ready = (
+                service_status.get('pdf_service', {}).get('available', False) and
+                service_status.get('azure_storage', {}).get('status') == 'available' and
+                service_status.get('complete_report_service', {}).get('available', False)
+            )
+            
+            return Response({
+                'all_services_ready': all_ready,
+                'timestamp': timezone.now().isoformat(),
+                'services': service_status,
+                'recommendations': [
+                    'Instalar WeasyPrint: pip install weasyprint' if not service_status.get('pdf_service', {}).get('available') else None,
+                    'Configurar Azure Storage credentials' if service_status.get('azure_storage', {}).get('status') != 'available' else None
+                ]
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error probando servicios: {e}")
+            return Response({
+                'message': 'Error probando servicios',
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

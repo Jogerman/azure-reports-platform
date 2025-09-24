@@ -17,26 +17,19 @@ class EnhancedHTMLReportGenerator:
         self.csv_filename = csv_filename
         
     def generate_complete_html(self, report):
-        """Genera HTML completo con manejo robusto de errores"""
+        """Genera HTML completo usando datos reales - VERSIÓN ACTUALIZADA"""
         try:
-            logger.info(f"Iniciando generación HTML para reporte {report.id}")
+            logger.info(f"🔄 Redirigiendo a generador con datos reales para reporte {report.id}")
             
-            # 1. Obtener datos CSV de forma segura
-            df, client_name = self._get_csv_data_safe(report)
-            self.client_name = client_name or "Azure Client"
+            # Usar el nuevo generador con datos reales
+            from apps.reports.utils.real_data_html_generator import RealDataHTMLGenerator
+            real_generator = RealDataHTMLGenerator()
             
-            # 2. Analizar datos con fallback
-            metrics = self._analyze_data_safe(df)
-            
-            # 3. Generar HTML con los datos disponibles
-            html = self._generate_html_template(metrics)
-            
-            logger.info(f"✅ HTML generado exitosamente para {self.client_name}")
-            return html
+            return real_generator.generate_complete_html(report)
             
         except Exception as e:
-            logger.error(f"❌ Error en generate_complete_html: {e}")
-            # Generar HTML básico como fallback
+            logger.error(f"❌ Error generando HTML: {e}")
+            # Fallback al método original si falla
             return self._generate_fallback_html(report)
     
     def _get_csv_data_safe(self, report) -> Tuple[pd.DataFrame, str]:

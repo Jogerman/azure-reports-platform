@@ -14,7 +14,7 @@ from .models import CSVFile, Report
 import logging
 import json
 from datetime import datetime, timedelta
-
+from typing import Optional
 from .models import Report, CSVFile
 from .serializers import ReportSerializer
 from apps.reports.utils.enhanced_analyzer import EnhancedHTMLReportGenerator
@@ -1605,6 +1605,8 @@ class ReportViewSet(viewsets.ModelViewSet):
                 'report_id': str(pk) if pk else None,
                 'method': 'reliable_generation'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+
     @action(detail=False, methods=['get'], url_path='test-complete-system')
     def test_complete_system_api(self, request):
         """Ejecutar test completo del sistema via API"""
@@ -2094,3 +2096,261 @@ class ReportViewSet(viewsets.ModelViewSet):
                 'message': 'Error probando servicios',
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['get'], url_path='html-real-data')
+    def html_real_data(self, request, pk=None):
+        """Generar vista HTML con datos reales del análisis"""
+        try:
+            report = self.get_object()
+            
+            logger.info(f"Generando HTML con datos reales para reporte {report.id}")
+            
+            # Usar el nuevo generador con datos reales
+            from apps.reports.utils.real_data_html_generator import RealDataHTMLGenerator
+            generator = RealDataHTMLGenerator()
+            html_content = generator.generate_complete_html(report)
+            
+            return HttpResponse(html_content, content_type='text/html')
+            
+        except Exception as e:
+            logger.error(f"Error generando HTML con datos reales para reporte {pk}: {e}")
+            return HttpResponse(f'''
+            <html>
+            <body style="font-family: Arial; padding: 40px; text-align: center;">
+                <h1>Error Generating Report</h1>
+                <p>Error: {str(e)}</p>
+                <p>Please try again or contact support.</p>
+            </body>
+            </html>
+            ''', status=500)
+
+    @action(detail=True, methods=['get'], url_path='category/(?P<category>[^/.]+)')
+    def category_html(self, request, pk=None, category=None):
+        """Generar vista HTML para una categoría específica"""
+        try:
+            report = self.get_object()
+            
+            # Validar categoría
+            valid_categories = ['cost', 'security', 'reliability', 'operational']
+            category = category.lower()
+            
+            if category not in valid_categories:
+                return Response({
+                    'message': f'Categoría inválida. Usar una de: {", ".join(valid_categories)}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            logger.info(f"Generando HTML de categoría {category} para reporte {report.id}")
+            
+            # Usar el nuevo generador con datos reales
+            from apps.reports.utils.real_data_html_generator import RealDataHTMLGenerator
+            generator = RealDataHTMLGenerator()
+            html_content = generator.generate_category_html(report, category)
+            
+            return HttpResponse(html_content, content_type='text/html')
+            
+        except Exception as e:
+            logger.error(f"Error generando HTML de categoría {category} para reporte {pk}: {e}")
+            return HttpResponse(f'''
+            <html>
+            <body style="font-family: Arial; padding: 40px; text-align: center;">
+                <h1>Error Generating {category.title()} Report</h1>
+                <p>Error: {str(e)}</p>
+            </body>
+            </html>
+            ''', status=500)
+
+    @action(detail=True, methods=['post'], url_path='generate-category-pdf/(?P<category>[^/.]+)')
+    def generate_category_pdf(self, request, pk=None, category=None):
+        """Generar PDF para una categoría específica"""
+        try:
+            report = self.get_object()
+            
+            # Validar categoría
+            valid_categories = ['cost', 'security', 'reliability', 'operational']
+            category = category.lower()
+            
+            if category not in valid_categories:
+                return Response({
+                    'message': f'Categoría inválida. Usar una de: {", ".join(valid_categories)}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            logger.info(f"Generando PDF de categoría {category} para reporte {report.id}")
+            
+            # Generar HTML de la categoría
+            from apps.reports.utils.real_data_html_generator import RealDataHTMLGenerator
+            generator = RealDataHTMLGenerator()
+            html_content = generator.generate_category_html(report, category)
+            
+            # Generar PDF desde HTML
+            from apps.storage.services.pdf_generator_service import PDFGeneratorService
+            pdf_service = PDFGeneratorService()
+            
+            # Crear nombre de archivo específico para categoría
+            client_name = generator._extract_client_name(report)
+            pdf_filename = f"azure_advisor_{category}_{client_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            
+            pdf_bytes = pdf_service.generate_pdf_from_html(html_content, pdf_filename)
+            
+            if not pdf_bytes:
+                return Response({
+                    'message': 'Error generando PDF de categoría',
+                    'category': category
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            # Subir a Azure Storage si está disponible
+            pdf_url = None
+            if hasattr(self, '_upload_category_pdf_to_azure'):
+                try:
+                    from apps.storage.services.enhanced_azure_storage import enhanced_azure_storage
+                    if enhanced_azure_storage.is_available():
+                        pdf_url = self._upload_category_pdf_to_azure(pdf_bytes, report, category, client_name)
+                except Exception as upload_error:
+                    logger.warning(f"Error subiendo PDF de categoría a Azure: {upload_error}")
+            
+            response_data = {
+                'message': f'PDF de {category.title()} generado exitosamente',
+                'category': category,
+                'report_id': str(report.id),
+                'client_name': client_name,
+                'pdf_filename': pdf_filename,
+                'pdf_size': len(pdf_bytes),
+                'pdf_url': pdf_url
+            }
+            
+            return Response(response_data, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            logger.error(f"Error generando PDF de categoría {category}: {e}")
+            return Response({
+                'message': f'Error generando PDF de categoría {category}',
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'], url_path='categories')
+    def available_categories(self, request):
+        """Obtener categorías disponibles para análisis"""
+        categories = [
+            {
+                'key': 'cost',
+                'name': 'Cost Optimization',
+                'description': 'Análisis de optimización de costos y ahorros potenciales',
+                'icon': '💰'
+            },
+            {
+                'key': 'security',
+                'name': 'Security Optimization',
+                'description': 'Recomendaciones de seguridad y mejores prácticas',
+                'icon': '🔒'
+            },
+            {
+                'key': 'reliability',
+                'name': 'Reliability Optimization',
+                'description': 'Mejoras de confiabilidad y disponibilidad',
+                'icon': '⚡'
+            },
+            {
+                'key': 'operational',
+                'name': 'Operational Excellence',
+                'description': 'Optimización operacional y eficiencia',
+                'icon': '⚙️'
+            }
+        ]
+        
+        return Response({
+            'categories': categories,
+            'total': len(categories)
+        })
+
+    @action(detail=True, methods=['get'], url_path='category-summary/(?P<category>[^/.]+)')
+    def category_summary(self, request, pk=None, category=None):
+        """Obtener resumen de datos para una categoría específica"""
+        try:
+            report = self.get_object()
+            
+            # Validar categoría
+            valid_categories = ['cost', 'security', 'reliability', 'operational']
+            category = category.lower()
+            
+            if category not in valid_categories:
+                return Response({
+                    'message': f'Categoría inválida. Usar una de: {", ".join(valid_categories)}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Obtener datos reales del análisis
+            from apps.reports.utils.real_data_html_generator import RealDataHTMLGenerator
+            generator = RealDataHTMLGenerator()
+            real_data = generator._get_real_analysis_data(report)
+            
+            if not real_data:
+                return Response({
+                    'message': 'No hay datos de análisis disponibles',
+                    'category': category
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Extraer datos específicos de la categoría
+            category_key = f'{category}_optimization' if category != 'operational' else 'operational_excellence'
+            category_data = real_data.get(category_key, {})
+            
+            # Preparar resumen según la categoría
+            summary = {
+                'category': category,
+                'category_name': category.title() + ' Optimization',
+                'report_id': str(report.id),
+                'data': category_data,
+                'available': bool(category_data)
+            }
+            
+            # Agregar métricas específicas según categoría
+            if category == 'cost':
+                summary['metrics'] = {
+                    'estimated_savings': category_data.get('estimated_monthly_optimization', 0),
+                    'actions_count': category_data.get('cost_actions_count', 0),
+                    'working_hours': category_data.get('cost_working_hours', 0)
+                }
+            elif category == 'security':
+                summary['metrics'] = {
+                    'actions_count': category_data.get('security_actions_count', 0),
+                    'working_hours': category_data.get('security_working_hours', 0),
+                    'monthly_investment': category_data.get('security_monthly_investment', 0)
+                }
+            elif category == 'reliability':
+                summary['metrics'] = {
+                    'actions_count': category_data.get('reliability_actions_count', 0),
+                    'working_hours': category_data.get('reliability_working_hours', 0)
+                }
+            elif category == 'operational':
+                summary['metrics'] = {
+                    'actions_count': category_data.get('opex_actions_count', 0),
+                    'working_hours': category_data.get('opex_working_hours', 0)
+                }
+            
+            return Response(summary)
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo resumen de categoría {category}: {e}")
+            return Response({
+                'message': f'Error obteniendo resumen de categoría {category}',
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def _upload_category_pdf_to_azure(self, pdf_bytes: bytes, report, category: str, client_name: str) -> Optional[str]:
+        """Subir PDF de categoría específica a Azure Storage"""
+        try:
+            from apps.storage.services.enhanced_azure_storage import enhanced_azure_storage
+            
+            # Crear nombre de blob específico para categoría
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            blob_name = f"reports/{client_name}/{category}/{report.id}_{timestamp}.pdf"
+            
+            # Subir usando el servicio existente
+            result = enhanced_azure_storage.upload_pdf(pdf_bytes, str(report.id), client_name)
+            
+            if result:
+                logger.info(f"✅ PDF de categoría {category} subido a Azure: {result['blob_name']}")
+                return result['blob_url']
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error subiendo PDF de categoría {category} a Azure: {e}")
+            return None

@@ -38,7 +38,7 @@ const handleDownloadPDF = async () => {
     const response = await fetch(downloadUrl, {
       headers: {
         'Authorization': `Bearer ${token}`,
-        'Accept': 'application/pdf',
+        //'Accept': 'application/pdf',
       }
     });
 

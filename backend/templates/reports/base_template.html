@@ -1,162 +1,605 @@
-<!-- templates/reports/base_template.html -->
+<!-- templates/reports/enhanced_base_template.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ report.title }}</title>
+    <title>Azure Advisor Report - {{ client_name|default:"Cliente Azure" }}</title>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             line-height: 1.6;
             color: #333;
-            margin: 0;
-            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
         }
-        .header {
-            background: linear-gradient(135deg, #0066CC 0%, #6366F1 100%);
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            min-height: 100vh;
+        }
+        
+        /* Header Styles */
+        .report-header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
             color: white;
             padding: 30px;
             text-align: center;
-            margin-bottom: 30px;
         }
-        .section {
-            margin-bottom: 30px;
-            padding: 20px;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
         }
-        .section h2 {
-            color: #0066CC;
-            border-bottom: 2px solid #e5e7eb;
-            padding-bottom: 10px;
+        
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
         }
-        .stats-grid {
+        
+        .icon-azure::before {
+            content: '☁️';
+            font-size: 2.5rem;
+        }
+        
+        .report-header h1 {
+            font-size: 2.5rem;
+            font-weight: 300;
+            margin: 0;
+        }
+        
+        .report-info h2 {
+            font-size: 1.8rem;
+            margin-bottom: 5px;
+        }
+        
+        .date {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+        
+        /* Dashboard Section */
+        .dashboard-section {
+            padding: 40px 30px;
+            background: #f8f9fa;
+        }
+        
+        .metrics-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: 2fr 1fr 1fr 1fr;
             gap: 20px;
-            margin: 20px 0;
+            align-items: stretch;
         }
-        .stat-card {
-            background: #f8fafc;
-            padding: 15px;
-            border-radius: 6px;
+        
+        .metric-card {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
             text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            border-left: 5px solid #2196F3;
+            transition: transform 0.3s ease;
         }
-        .stat-value {
-            font-size: 2em;
+        
+        .metric-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .main-metric {
+            border-left-color: #1976D2;
+        }
+        
+        .main-metric .metric-number {
+            font-size: 4rem;
             font-weight: bold;
-            color: #0066CC;
+            color: #1976D2;
+            margin-bottom: 10px;
         }
-        .recommendations {
-            background: #f0fdf4;
-            border-left: 4px solid #10b981;
-            padding: 20px;
-            margin: 20px 0;
+        
+        .secondary-metric .metric-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #2196F3;
+            margin-bottom: 10px;
         }
-        .footer {
-            margin-top: 50px;
+        
+        .metric-label {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 8px;
+            line-height: 1.2;
+        }
+        
+        .metric-subtitle {
+            font-size: 0.85rem;
+            color: #777;
+            line-height: 1.2;
+        }
+        
+        /* Summary Section */
+        .summary-section {
+            padding: 40px 30px;
+            background: white;
+        }
+        
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 3px solid #2196F3;
+        }
+        
+        .section-icon {
+            font-size: 2rem;
+        }
+        
+        .section-header h2 {
+            color: #1976D2;
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+        
+        .summary-content {
+            margin-bottom: 30px;
+            font-size: 1.1rem;
+            line-height: 1.8;
+        }
+        
+        .highlight {
+            color: #2196F3;
+            font-weight: 600;
+        }
+        
+        .total-actions-display {
             text-align: center;
-            color: #6b7280;
-            font-size: 0.9em;
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 10px;
+            border: 2px solid #e3f2fd;
+        }
+        
+        .total-actions-display h3 {
+            color: #1976D2;
+            font-size: 1.5rem;
+            margin-bottom: 5px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 15px;
+        }
+        
+        .large-number {
+            font-size: 4rem;
+            font-weight: bold;
+            color: #1976D2;
+        }
+        
+        /* Categories Section */
+        .categories-section {
+            padding: 40px 30px;
+            background: #f8f9fa;
+        }
+        
+        .categories-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+        
+        .category-card {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            border-left: 5px solid;
+        }
+        
+        .cost-optimization { border-left-color: #4CAF50; }
+        .security { border-left-color: #F44336; }
+        .reliability { border-left-color: #FF9800; }
+        .operational-excellence { border-left-color: #9C27B0; }
+        .performance { border-left-color: #2196F3; }
+        
+        .category-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .category-icon {
+            font-size: 1.5rem;
+        }
+        
+        .category-title {
+            color: #1976D2;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+        
+        .category-metrics {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+        }
+        
+        .category-metric {
+            text-align: center;
+            flex: 1;
+        }
+        
+        .category-metric-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #1976D2;
+            margin-bottom: 5px;
+        }
+        
+        .category-metric-label {
+            font-size: 0.9rem;
+            color: #666;
+        }
+        
+        /* Analysis Tables */
+        .analysis-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .analysis-table th {
+            background: linear-gradient(135deg, #1976D2, #2196F3);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        .analysis-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .analysis-table tr:hover {
+            background: #f5f5f5;
+        }
+        
+        .analysis-table .number-cell {
+            text-align: right;
+            font-weight: 600;
+            color: #1976D2;
+        }
+        
+        .analysis-table .total-row {
+            background: #e3f2fd;
+            font-weight: bold;
+        }
+        
+        /* Conclusions Section */
+        .conclusions-section {
+            padding: 40px 30px;
+            background: white;
+        }
+        
+        .conclusion-box {
+            background: linear-gradient(135deg, #fff3e0, #ffe0b2);
+            padding: 25px;
+            border-radius: 10px;
+            border-left: 5px solid #ff9800;
+            margin-bottom: 20px;
+        }
+        
+        .conclusion-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .conclusion-title {
+            color: #e65100;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        
+        .conclusion-content {
+            color: #333;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        
+        .optimization-summary {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .optimization-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .optimization-list li {
+            padding: 10px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .optimization-list li:last-child {
+            border-bottom: none;
+        }
+        
+        .optimization-value {
+            font-weight: bold;
+            color: #1976D2;
+        }
+        
+        /* Footer */
+        .report-footer {
+            background: linear-gradient(135deg, #1976D2, #2196F3);
+            color: white;
+            text-align: center;
+            padding: 20px;
+            font-size: 0.9rem;
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .container {
+                margin: 0;
+            }
+            
+            .header-content {
+                flex-direction: column;
+                text-align: center;
+                gap: 20px;
+            }
+            
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .categories-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .category-metrics {
+                flex-direction: column;
+                gap: 10px;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>{{ report.title }}</h1>
-        <p>Reporte de análisis de datos generado el {{ report.created_at|date:"d/m/Y H:i" }}</p>
-        <p>Archivo analizado: {{ csv_file.original_filename }}</p>
-    </div>
-
-    <!-- Estadísticas básicas -->
-    <div class="section">
-        <h2>📊 Resumen Ejecutivo</h2>
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-value">{{ basic_stats.total_rows|default:0 }}</div>
-                <div>Filas de datos</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">{{ basic_stats.total_columns|default:0 }}</div>
-                <div>Columnas</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">{{ data_quality.completeness_score|default:0|floatformat:1 }}%</div>
-                <div>Calidad de datos</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">{{ recommendations|length|default:0 }}</div>
-                <div>Recomendaciones</div>
+    <div class="container">
+        <!-- Header -->
+        <div class="report-header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <span class="icon-azure"></span>
+                    <div>
+                        <h1>Azure Advisor Report</h1>
+                    </div>
+                </div>
+                <div class="report-info">
+                    <h2>{{ client_name|upper|default:"BZPAY SOLUTIONS S.A." }}</h2>
+                    <p class="date">Data retrieved on {{ current_date|default:"Wednesday, September 24, 2025" }}</p>
+                </div>
             </div>
         </div>
-    </div>
 
-    <!-- Análisis de calidad -->
-    {% if data_quality %}
-    <div class="section">
-        <h2>🔍 Calidad de Datos</h2>
-        <p><strong>Puntuación de completitud:</strong> {{ data_quality.completeness_score|floatformat:1 }}%</p>
-        <p><strong>Valores nulos:</strong> {{ data_quality.total_null_values|default:0 }}</p>
-        <p><strong>Filas duplicadas:</strong> {{ data_quality.duplicate_rows|default:0 }}</p>
-        
-        {% if data_quality.consistency_issues %}
-        <h3>Problemas de consistencia:</h3>
-        <ul>
-            {% for issue in data_quality.consistency_issues %}
-            <li>{{ issue }}</li>
-            {% endfor %}
-        </ul>
-        {% endif %}
-    </div>
-    {% endif %}
+        <!-- Dashboard Metrics -->
+        <div class="dashboard-section">
+            <div class="metrics-grid">
+                <div class="metric-card main-metric">
+                    <div class="metric-number">{{ total_recommendations|default:454 }}</div>
+                    <div class="metric-label">Total Recommended Actions</div>
+                    <div class="metric-subtitle">Obtained From Azure Advisor</div>
+                </div>
+                
+                <div class="metric-card secondary-metric">
+                    <div class="metric-number">{{ actions_in_scope|default:399 }}</div>
+                    <div class="metric-label">Actions In Scope</div>
+                    <div class="metric-subtitle">Selected By Business Impact</div>
+                </div>
+                
+                <div class="metric-card secondary-metric">
+                    <div class="metric-number">{{ remediation_actions|default:382 }}</div>
+                    <div class="metric-label">Remediation</div>
+                    <div class="metric-subtitle">No increase in Billing</div>
+                </div>
+                
+                <div class="metric-card secondary-metric">
+                    <div class="metric-number">{{ azure_advisor_score|default:15 }}</div>
+                    <div class="metric-label">Azure Advisor Score</div>
+                    <div class="metric-subtitle">0 - 100</div>
+                </div>
+            </div>
+        </div>
 
-    <!-- Análisis de costos -->
-    {% if cost_analysis %}
-    <div class="section">
-        <h2>💰 Análisis de Costos</h2>
-        {% for column, data in cost_analysis.items %}
-        <h3>{{ column }}</h3>
-        <p><strong>Ahorros totales:</strong> ${{ data.total_savings|floatformat:2 }}</p>
-        <p><strong>Promedio:</strong> ${{ data.average_savings|floatformat:2 }}</p>
-        <p><strong>Máximo:</strong> ${{ data.max_savings|floatformat:2 }}</p>
-        {% endfor %}
-    </div>
-    {% endif %}
+        <!-- Summary Section -->
+        <div class="summary-section">
+            <div class="section-header">
+                <span class="section-icon">📊</span>
+                <h2>SUMMARY OF FINDINGS</h2>
+            </div>
+            
+            <div class="summary-content">
+                <p><strong>Azure Advisor Score</strong> is a metric that evaluates the <span class="highlight">overall optimization status</span> of resources in Azure, based on <span class="highlight">five key categories</span>: reliability, security, operational excellence, performance, and cost optimization.</p>
+                
+                <p>It provides <span class="highlight">personalized recommendations</span> to improve each area, helping to <span class="highlight">maximize efficiency</span> and <span class="highlight">reduce risks</span> in the cloud environment.</p>
+            </div>
+            
+            <div class="total-actions-display">
+                <h3>Total Recommended Actions</h3>
+                <p class="subtitle">Obtained From Azure Advisor</p>
+                <div class="large-number">{{ total_recommendations|default:454 }}</div>
+            </div>
+        </div>
 
-    <!-- Análisis de seguridad -->
-    {% if security_analysis.total_security_recommendations %}
-    <div class="section">
-        <h2>🔒 Análisis de Seguridad</h2>
-        <p><strong>Total de recomendaciones de seguridad:</strong> {{ security_analysis.total_security_recommendations }}</p>
-        <p><strong>Porcentaje del total:</strong> {{ security_analysis.security_percentage|floatformat:1 }}%</p>
-        
-        {% if security_analysis.security_categories %}
-        <h3>Categorías de seguridad:</h3>
-        <ul>
-            {% for category, count in security_analysis.security_categories.items %}
-            <li><strong>{{ category|title }}:</strong> {{ count }} recomendaciones</li>
-            {% endfor %}
-        </ul>
-        {% endif %}
-    </div>
-    {% endif %}
+        <!-- Optimization Categories -->
+        <div class="categories-section">
+            <div class="section-header">
+                <span class="section-icon">📈</span>
+                <h2>Optimization Categories</h2>
+            </div>
+            
+            <div class="categories-grid">
+                <div class="category-card cost-optimization">
+                    <div class="category-header">
+                        <span class="category-icon">💰</span>
+                        <div class="category-title">Cost Optimization</div>
+                    </div>
+                    <div class="category-metrics">
+                        <div class="category-metric">
+                            <div class="category-metric-number">{{ cost_actions|default:1 }}</div>
+                            <div class="category-metric-label">ACTIONS</div>
+                        </div>
+                        <div class="category-metric">
+                            <div class="category-metric-number">{{ cost_high_priority|default:0 }}</div>
+                            <div class="category-metric-label">HIGH PRIORITY</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="category-card security">
+                    <div class="category-header">
+                        <span class="category-icon">🔒</span>
+                        <div class="category-title">Security</div>
+                    </div>
+                    <div class="category-metrics">
+                        <div class="category-metric">
+                            <div class="category-metric-number">{{ security_actions|default:1 }}</div>
+                            <div class="category-metric-label">ACTIONS</div>
+                        </div>
+                        <div class="category-metric">
+                            <div class="category-metric-number">{{ security_high_priority|default:1 }}</div>
+                            <div class="category-metric-label">HIGH PRIORITY</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="category-card reliability">
+                    <div class="category-header">
+                        <span class="category-icon">⚡</span>
+                        <div class="category-title">Reliability</div>
+                    </div>
+                    <div class="category-metrics">
+                        <div class="category-metric">
+                            <div class="category-metric-number">{{ reliability_actions|default:1 }}</div>
+                            <div class="category-metric-label">ACTIONS</div>
+                        </div>
+                        <div class="category-metric">
+                            <div class="category-metric-number">{{ reliability_high_priority|default:1 }}</div>
+                            <div class="category-metric-label">HIGH PRIORITY</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="category-card operational-excellence">
+                    <div class="category-header">
+                        <span class="category-icon">⚙️</span>
+                        <div class="category-title">Operational Excellence</div>
+                    </div>
+                    <div class="category-metrics">
+                        <div class="category-metric">
+                            <div class="category-metric-number">{{ opex_actions|default:0 }}</div>
+                            <div class="category-metric-label">ACTIONS</div>
+                        </div>
+                        <div class="category-metric">
+                            <div class="category-metric-number">{{ opex_high_priority|default:0 }}</div>
+                            <div class="category-metric-label">HIGH PRIORITY</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-    <!-- Recomendaciones -->
-    {% if recommendations %}
-    <div class="recommendations">
-        <h2>💡 Recomendaciones</h2>
-        <ul>
-            {% for recommendation in recommendations %}
-            <li>{{ recommendation }}</li>
-            {% endfor %}
-        </ul>
-    </div>
-    {% endif %}
+        <!-- Conclusions Section -->
+        <div class="conclusions-section">
+            <div class="conclusion-box">
+                <div class="conclusion-header">
+                    <span class="section-icon">✅</span>
+                    <h2 class="conclusion-title">CONCLUSIONS</h2>
+                </div>
+                
+                <div class="conclusion-content">
+                    <p>This report summarizes the main areas of detected optimization, highlighting their potential impact on improving operational efficiency and generating significant economic savings.</p>
+                    
+                    <div class="optimization-summary">
+                        <h4>Potential Optimization:</h4>
+                        <ul class="optimization-list">
+                            <li>1. Economic optimization of <span class="optimization-value">${{ monthly_savings|default:"30,651" }} USD</span> per month pending validation.</li>
+                            <li>2. Below is a summary of key tasks, essential for strategic implementation and maximizing organizational benefits (visible through the increase in the Azure Advisor Score, currently at <span class="optimization-value">{{ advisor_score|default:"65" }}%</span>):</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <!-- Summary Table -->
+                <table class="analysis-table">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th>Total Actions</th>
+                            <th>Monthly Investment</th>
+                            <th>Working Hours</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Reliability</td>
+                            <td class="number-cell">{{ reliability_total|default:1067 }}</td>
+                            <td class="number-cell">${{ reliability_investment|default:"43,691" }}</td>
+                            <td class="number-cell">{{ reliability_hours|default:"547.3" }}</td>
+                        </tr>
+                        <tr>
+                            <td>Security</td>
+                            <td class="number-cell">{{ security_total|default:3030 }}</td>
+                            <td class="number-cell">${{ security_investment|default:"41,342" }}</td>
+                            <td class="number-cell">{{ security_hours|default:"1138.6" }}</td>
+                        </tr>
+                        <tr>
+                            <td>Operational excellence</td>
+                            <td class="number-cell">{{ opex_total|default:197 }}</td>
+                            <td class="number-cell">${{ opex_investment|default:"0" }}</td>
+                            <td class="number-cell">{{ opex_hours|default:"97.3" }}</td>
+                        </tr>
+                        <tr class="total-row">
+                            <td><strong>Total</strong></td>
+                            <td class="number-cell"><strong>{{ total_actions_summary|default:4294 }}</strong></td>
+                            <td class="number-cell"><strong>${{ total_investment|default:"85,033" }}</strong></td>
+                            <td class="number-cell"><strong>{{ total_hours|default:"1783.1" }}</strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
 
-    <div class="footer">
-        <p>Reporte generado por Azure Reports Platform</p>
-        <p>Tipo: {{ report.get_report_type_display }} | ID: {{ report.id }}</p>
+        <!-- Footer -->
+        <div class="report-footer">
+            <p>Generated by Azure Reports Platform on {{ generation_date|default:"Wednesday, September 24, 2025" }}</p>
+        </div>
     </div>
 </body>
 </html>

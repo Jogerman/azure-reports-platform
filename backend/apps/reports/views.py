@@ -1441,60 +1441,227 @@ class ReportViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='generate-pdf')
     def generate_pdf(self, request, pk=None):
-        """Generar PDF completo del reporte con almacenamiento en Azure"""
+        """Generar PDF usando el mismo patrón exitoso de test_complete_system.py"""
         try:
             report = self.get_object()
             
-            logger.info(f"Iniciando generación PDF para reporte {report.id}")
+            logger.info(f"=== INICIANDO GENERACIÓN PDF CONFIABLE ===")
+            logger.info(f"Reporte ID: {report.id}")
+            logger.info(f"Título: {report.title}")
             
-            # Importar servicio completo
-            from apps.storage.services.complete_report_service import complete_report_service
+            # 1. Verificar servicios (igual que en test)
+            logger.info("1. Verificando servicios...")
             
-            # Generar reporte completo
-            result = complete_report_service.generate_complete_report(report)
+            # Verificar PDF Service
+            try:
+                from apps.storage.services.pdf_generator_service import PDFGeneratorService
+                pdf_service = PDFGeneratorService()
+                logger.info(f"✅ PDF Service disponible: {pdf_service.available_engines}")
+            except Exception as e:
+                logger.error(f"❌ PDF Service: {e}")
+                return Response({
+                    'message': 'PDF Service no disponible',
+                    'error': str(e),
+                    'recommendation': 'Instalar WeasyPrint: pip install weasyprint'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
-            if result['success']:
-                response_data = {
-                    'message': 'PDF generado exitosamente',
-                    'report_id': str(report.id),
-                    'client_name': result.get('client_name', 'Azure Client'),
-                    'pdf_generated': result['pdf_generated'],
-                    'pdf_uploaded': result['pdf_uploaded'],
-                    'dataframe_uploaded': result['dataframe_uploaded'],
-                    'urls': result['urls'],
-                    'metadata': {
-                        'pdf_size': result.get('pdf_size'),
-                        'pdf_filename': result.get('pdf_filename')
+            # Verificar Azure Storage
+            try:
+                from apps.storage.services.enhanced_azure_storage import enhanced_azure_storage
+                azure_info = enhanced_azure_storage.get_storage_info()
+                logger.info(f"✅ Azure Storage: {azure_info['status']}")
+                
+                if azure_info['status'] != 'available':
+                    logger.warning(f"⚠️ Azure no configurado correctamente: {azure_info}")
+                    return Response({
+                        'message': 'Azure Storage no disponible',
+                        'azure_status': azure_info,
+                        'recommendation': 'Configurar credenciales de Azure Storage'
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                    
+            except Exception as e:
+                logger.error(f"❌ Azure Storage: {e}")
+                return Response({
+                    'message': 'Error verificando Azure Storage',
+                    'error': str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            # 2. Generar reporte completo (igual que en test)
+            logger.info("2. Iniciando generación completa...")
+            
+            # Actualizar estado del reporte
+            report.status = 'generating'
+            report.save(update_fields=['status'])
+            
+            try:
+                from apps.storage.services.complete_report_service import generate_complete_report
+                
+                # Usar la función que funciona en el test
+                result = generate_complete_report(report)
+                
+                logger.info("3. Procesando resultados...")
+                logger.info(f"   ✅ Éxito: {result['success']}")
+                logger.info(f"   📄 HTML: {result['html_generated']}")
+                logger.info(f"   📋 PDF: {result['pdf_generated']}")
+                logger.info(f"   ☁️  PDF en Azure: {result['pdf_uploaded']}")
+                logger.info(f"   📊 DataFrame en Azure: {result['dataframe_uploaded']}")
+                
+                if result['success']:
+                    # Actualizar estado del reporte
+                    report.status = 'completed'
+                    report.completed_at = timezone.now()
+                    report.save(update_fields=['status', 'completed_at'])
+                    
+                    response_data = {
+                        'message': 'PDF generado exitosamente usando método confiable',
+                        'report_id': str(report.id),
+                        'client_name': result.get('client_name', 'Azure Client'),
+                        'generation_summary': {
+                            'html_generated': result['html_generated'],
+                            'pdf_generated': result['pdf_generated'],
+                            'pdf_uploaded': result['pdf_uploaded'],
+                            'dataframe_uploaded': result['dataframe_uploaded']
+                        },
+                        'urls': result['urls'],
+                        'metadata': {
+                            'pdf_size': result.get('pdf_size'),
+                            'pdf_filename': result.get('pdf_filename')
+                        }
                     }
-                }
+                    
+                    # URLs para descarga
+                    if result['urls'].get('pdf'):
+                        response_data['pdf_download_url'] = result['urls']['pdf']
+                        response_data['direct_download'] = f"/api/reports/{report.id}/download/"
+                    
+                    if result['urls'].get('dataframe'):
+                        response_data['dataframe_url'] = result['urls']['dataframe']
+                    
+                    logger.info("4. URLs generadas:")
+                    if 'pdf' in result['urls']:
+                        logger.info(f"   PDF: {result['urls']['pdf'][:60]}...")
+                    if 'dataframe' in result['urls']:
+                        logger.info(f"   DataFrame: {result['urls']['dataframe'][:60]}...")
+                    
+                    logger.info(f"5. Cliente detectado: {result.get('client_name', 'No detectado')}")
+                    
+                    if result.get('pdf_size'):
+                        logger.info(f"   Tamaño PDF: {result['pdf_size']:,} bytes")
+                    
+                    logger.info(f"✅ PDF generado exitosamente para reporte {report.id}")
+                    return Response(response_data, status=status.HTTP_201_CREATED)
                 
-                if result['urls'].get('pdf'):
-                    response_data['pdf_download_url'] = result['urls']['pdf']
-                
-                logger.info(f"PDF generado exitosamente para reporte {report.id}")
-                return Response(response_data, status=status.HTTP_201_CREATED)
-            else:
-                error_response = {
-                    'message': 'Error generando PDF',
-                    'errors': result['errors'],
-                    'partial_success': {
-                        'html_generated': result['html_generated'],
-                        'pdf_generated': result['pdf_generated'],
-                        'pdf_uploaded': result['pdf_uploaded']
+                else:
+                    # Error en la generación
+                    report.status = 'failed'
+                    report.error_message = '; '.join(result['errors'])
+                    report.save(update_fields=['status', 'error_message'])
+                    
+                    error_response = {
+                        'message': 'Error generando PDF con método confiable',
+                        'errors': result['errors'],
+                        'partial_success': {
+                            'html_generated': result['html_generated'],
+                            'pdf_generated': result['pdf_generated'],
+                            'pdf_uploaded': result['pdf_uploaded']
+                        },
+                        'debug_info': {
+                            'method': 'reliable_generation',
+                            'based_on': 'test_complete_system.py pattern'
+                        }
                     }
-                }
+                    
+                    logger.error(f"❌ Errores generando PDF:")
+                    for error in result['errors']:
+                        logger.error(f"   - {error}")
+                    
+                    return Response(error_response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            except Exception as generation_error:
+                # Error durante la generación
+                report.status = 'failed'
+                report.error_message = str(generation_error)
+                report.save(update_fields=['status', 'error_message'])
                 
-                logger.error(f"Error generando PDF para reporte {report.id}: {result['errors']}")
-                return Response(error_response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                logger.error(f"❌ Excepción durante generación: {generation_error}")
+                import traceback
+                logger.error(traceback.format_exc())
+                
+                return Response({
+                    'message': 'Excepción durante generación de PDF',
+                    'error': str(generation_error),
+                    'method': 'reliable_generation',
+                    'report_status': 'failed'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+        except Exception as e:
+            logger.error(f"❌ Error crítico en generate_pdf_reliable para reporte {pk}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            
+            return Response({
+                'message': 'Error crítico generando PDF',
+                'error': str(e),
+                'report_id': str(pk) if pk else None,
+                'method': 'reliable_generation'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    @action(detail=False, methods=['get'], url_path='test-complete-system')
+    def test_complete_system_api(self, request):
+        """Ejecutar test completo del sistema via API"""
+        try:
+            logger.info("=== EJECUTANDO TEST COMPLETO DEL SISTEMA VIA API ===")
+            
+            # Importar la función de test
+            import sys
+            import os
+            
+            # Agregar el path del backend si es necesario
+            backend_path = os.path.join(os.path.dirname(__file__), '..', '..', '..')
+            if backend_path not in sys.path:
+                sys.path.append(backend_path)
+            
+            # Importar el test
+            from test_complete_system import test_complete_system
+            
+            # Capturar output del test
+            import io
+            from contextlib import redirect_stdout, redirect_stderr
+            
+            stdout_capture = io.StringIO()
+            stderr_capture = io.StringIO()
+            
+            try:
+                with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
+                    test_complete_system()
+                
+                stdout_output = stdout_capture.getvalue()
+                stderr_output = stderr_capture.getvalue()
+                
+                return Response({
+                    'message': 'Test completo ejecutado exitosamente',
+                    'stdout': stdout_output,
+                    'stderr': stderr_output,
+                    'success': True
+                }, status=status.HTTP_200_OK)
+                
+            except Exception as test_error:
+                stdout_output = stdout_capture.getvalue()
+                stderr_output = stderr_capture.getvalue()
+                
+                return Response({
+                    'message': 'Error ejecutando test completo',
+                    'error': str(test_error),
+                    'stdout': stdout_output,
+                    'stderr': stderr_output,
+                    'success': False
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
         except Exception as e:
-            logger.error(f"Error en generate_pdf para reporte {pk}: {e}")
             return Response({
-                'message': 'Error interno generando PDF',
+                'message': 'Error crítico ejecutando test',
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-
+    
     @action(detail=True, methods=['post'], url_path='regenerate-pdf')
     def regenerate_pdf(self, request, pk=None):
         """Regenerar PDF de un reporte existente"""
@@ -1529,50 +1696,196 @@ class ReportViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['get'], url_path='download')
     def download_pdf(self, request, pk=None):
-        """Descargar PDF del reporte - VERSIÓN CORREGIDA"""
+        """Descargar PDF del reporte - VERSIÓN MEJORADA CON REGENERACIÓN AUTOMÁTICA"""
         try:
             report = self.get_object()
             
             logger.info(f"Intentando descargar PDF para reporte {report.id}")
             logger.info(f"PDF URL en BD: {report.pdf_file_url}")
             
-            # Verificar si existe PDF en analysis_data como fallback
+            # Verificar si existe PDF válido
             pdf_url = report.pdf_file_url
             
+            # Fallback 1: Verificar en analysis_data
             if not pdf_url and report.analysis_data and 'pdf_info' in report.analysis_data:
                 pdf_info = report.analysis_data['pdf_info']
                 pdf_url = pdf_info.get('blob_url')
                 logger.info(f"PDF URL desde analysis_data: {pdf_url}")
             
+            # Fallback 2: Intentar regenerar URL si tenemos blob_name pero URL expirado
+            if not pdf_url or not pdf_url.startswith('https://'):
+                logger.warning(f"URL inválida o faltante. Intentando regenerar...")
+                
+                # Buscar información del blob en analysis_data
+                if report.analysis_data and 'pdf_info' in report.analysis_data:
+                    pdf_info = report.analysis_data['pdf_info']
+                    blob_name = pdf_info.get('blob_name')
+                    
+                    if blob_name:
+                        logger.info(f"Encontrado blob_name: {blob_name}. Regenerando URL...")
+                        
+                        try:
+                            # Importar servicio Azure
+                            from apps.storage.services.enhanced_azure_storage import enhanced_azure_storage
+                            
+                            # Regenerar URL con nuevo SAS token
+                            new_pdf_url = enhanced_azure_storage._generate_sas_url(
+                                enhanced_azure_storage.containers['pdfs'], 
+                                blob_name, 
+                                hours=24
+                            )
+                            
+                            if new_pdf_url:
+                                # Actualizar la URL en la base de datos
+                                report.pdf_file_url = new_pdf_url
+                                report.analysis_data['pdf_info']['blob_url'] = new_pdf_url
+                                report.save(update_fields=['pdf_file_url', 'analysis_data'])
+                                
+                                pdf_url = new_pdf_url
+                                logger.info(f"✅ URL regenerada exitosamente: {pdf_url[:80]}...")
+                            else:
+                                logger.error("❌ Error regenerando SAS URL")
+                                
+                        except Exception as regen_error:
+                            logger.error(f"❌ Error regenerando URL: {regen_error}")
+            
+            # Fallback 3: Si todavía no hay PDF, intentar regeneración completa
             if not pdf_url:
-                logger.warning(f"No PDF URL para reporte {report.id}")
+                logger.warning("No se pudo obtener URL. Verificando si necesita regeneración completa...")
+                
+                # Verificar si el PDF existe físicamente en Azure
+                if report.analysis_data and 'pdf_info' in report.analysis_data:
+                    blob_name = report.analysis_data['pdf_info'].get('blob_name')
+                    
+                    if blob_name:
+                        try:
+                            from apps.storage.services.enhanced_azure_storage import enhanced_azure_storage
+                            
+                            # Verificar si el blob existe
+                            container_client = enhanced_azure_storage.blob_service_client.get_container_client(
+                                enhanced_azure_storage.containers['pdfs']
+                            )
+                            blob_client = container_client.get_blob_client(blob_name)
+                            
+                            if blob_client.exists():
+                                # El blob existe, regenerar URL
+                                pdf_url = enhanced_azure_storage._generate_sas_url(
+                                    enhanced_azure_storage.containers['pdfs'], 
+                                    blob_name, 
+                                    hours=24
+                                )
+                                
+                                if pdf_url:
+                                    # Actualizar en BD
+                                    report.pdf_file_url = pdf_url
+                                    report.save(update_fields=['pdf_file_url'])
+                                    logger.info(f"✅ PDF encontrado en Azure y URL regenerada")
+                            else:
+                                logger.warning("❌ PDF no existe físicamente en Azure")
+                        
+                        except Exception as check_error:
+                            logger.error(f"❌ Error verificando blob: {check_error}")
+            
+            # Si aún no hay URL válida, dar respuesta apropiada
+            if not pdf_url or not pdf_url.startswith('https://'):
+                logger.error(f"No se pudo obtener URL válida para reporte {report.id}")
                 return Response({
-                    'message': 'PDF no disponible. Genere primero el PDF.',
-                    'actions': ['generate-pdf'],
+                    'message': 'PDF no disponible. El archivo necesita ser regenerado.',
+                    'actions': ['generate-pdf', 'regenerate-pdf'],
                     'report_id': str(report.id),
-                    'status': report.status
+                    'status': report.status,
+                    'debug_info': {
+                        'has_analysis_data': bool(report.analysis_data),
+                        'has_pdf_info': bool(report.analysis_data and 'pdf_info' in report.analysis_data) if report.analysis_data else False,
+                        'original_url': report.pdf_file_url if report.pdf_file_url else None
+                    }
                 }, status=status.HTTP_404_NOT_FOUND)
             
-            # Verificar que la URL es válida
-            if not pdf_url.startswith('https://'):
-                logger.error(f"URL inválida: {pdf_url}")
-                return Response({
-                    'message': 'URL de PDF inválida',
-                    'error': 'Invalid PDF URL format'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
-            logger.info(f"Redirigiendo a: {pdf_url}")
+            logger.info(f"✅ Redirigiendo a URL válida: {pdf_url[:80]}...")
             
             # Redirigir a la URL de Azure (con SAS token)
             from django.http import HttpResponseRedirect
             return HttpResponseRedirect(pdf_url)
             
         except Exception as e:
-            logger.error(f"Error descargando PDF para reporte {pk}: {e}")
+            logger.error(f"❌ Error descargando PDF para reporte {pk}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            
             return Response({
                 'message': 'Error descargando PDF',
                 'error': str(e),
-                'report_id': str(pk) if pk else None
+                'report_id': str(pk) if pk else None,
+                'suggestion': 'Intente regenerar el PDF usando el endpoint generate-pdf'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+
+    @action(detail=True, methods=['post'], url_path='fix-download')
+    def fix_download(self, request, pk=None):
+        """Método auxiliar para diagnosticar y corregir problemas de descarga"""
+        try:
+            report = self.get_object()
+            
+            diagnosis = {
+                'report_id': str(report.id),
+                'status': report.status,
+                'pdf_file_url': report.pdf_file_url,
+                'has_analysis_data': bool(report.analysis_data),
+                'pdf_info': None,
+                'azure_available': False,
+                'blob_exists': False,
+                'new_url_generated': False
+            }
+            
+            # Verificar analysis_data
+            if report.analysis_data and 'pdf_info' in report.analysis_data:
+                diagnosis['pdf_info'] = report.analysis_data['pdf_info']
+            
+            # Verificar Azure
+            try:
+                from apps.storage.services.enhanced_azure_storage import enhanced_azure_storage
+                diagnosis['azure_available'] = enhanced_azure_storage.is_available()
+                
+                # Verificar si blob existe
+                if diagnosis['pdf_info'] and diagnosis['pdf_info'].get('blob_name'):
+                    blob_name = diagnosis['pdf_info']['blob_name']
+                    container_client = enhanced_azure_storage.blob_service_client.get_container_client(
+                        enhanced_azure_storage.containers['pdfs']
+                    )
+                    blob_client = container_client.get_blob_client(blob_name)
+                    diagnosis['blob_exists'] = blob_client.exists()
+                    
+                    if diagnosis['blob_exists']:
+                        # Generar nueva URL
+                        new_url = enhanced_azure_storage._generate_sas_url(
+                            enhanced_azure_storage.containers['pdfs'], 
+                            blob_name, 
+                            hours=24
+                        )
+                        
+                        if new_url:
+                            report.pdf_file_url = new_url
+                            report.save(update_fields=['pdf_file_url'])
+                            diagnosis['new_url_generated'] = True
+                            diagnosis['new_url'] = new_url[:80] + "..." if len(new_url) > 80 else new_url
+            
+            except Exception as azure_error:
+                diagnosis['azure_error'] = str(azure_error)
+            
+            return Response({
+                'message': 'Diagnóstico completado',
+                'diagnosis': diagnosis,
+                'recommendations': [
+                    'Regenerar PDF completo' if not diagnosis['blob_exists'] else None,
+                    'Usar nueva URL generada' if diagnosis['new_url_generated'] else None,
+                    'Verificar configuración de Azure' if not diagnosis['azure_available'] else None
+                ]
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'message': 'Error en diagnóstico',
+                'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
     @action(detail=True, methods=['get'], url_path='azure-info')

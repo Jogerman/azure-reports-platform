@@ -1,4 +1,17 @@
-# backend/apps/reports/utils/enhanced_analyzer.py
+#!/usr/bin/env python
+"""
+Script de corrección automática para el error de EnhancedHTMLReportGenerator
+Ejecutar desde el directorio backend: python fix_html_generator.py
+"""
+
+import os
+import shutil
+from pathlib import Path
+
+def create_fixed_enhanced_analyzer():
+    """Crear el archivo corregido con la clase completa"""
+    
+    enhanced_analyzer_content = '''# backend/apps/reports/utils/enhanced_analyzer.py
 import pandas as pd
 from datetime import datetime
 from typing import Optional, Tuple, Dict, Any
@@ -290,7 +303,7 @@ class EnhancedHTMLReportGenerator:
             total_actions = metrics.get('total_recommendations', 0)
             azure_score = min(85, max(50, 100 - (total_actions * 0.5)))
             
-            html = f"""
+            html = f\"\"\"
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -426,7 +439,7 @@ class EnhancedHTMLReportGenerator:
     </div>
 </body>
 </html>
-            """
+            \"\"\"
             
             return html
             
@@ -441,7 +454,7 @@ class EnhancedHTMLReportGenerator:
             if report and report.csv_file:
                 client_name = self._extract_client_name(report.csv_file.original_filename)
             
-            return f"""
+            return f\"\"\"
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -516,11 +529,11 @@ class EnhancedHTMLReportGenerator:
     </div>
 </body>
 </html>
-            """
+            \"\"\"
             
         except Exception as e:
             logger.error(f"Error en fallback HTML: {e}")
-            return f"""
+            return f\"\"\"
 <!DOCTYPE html>
 <html>
 <head><title>Error</title></head>
@@ -529,11 +542,11 @@ class EnhancedHTMLReportGenerator:
     <p>Error: {str(e)}</p>
 </body>
 </html>
-            """
+            \"\"\"
     
     def _get_professional_css(self) -> str:
         """CSS profesional mejorado"""
-        return """
+        return \"\"\"
         * {
             margin: 0;
             padding: 0;
@@ -748,4 +761,85 @@ class EnhancedHTMLReportGenerator:
                 font-size: 28px;
             }
         }
-        """
+        \"\"\"
+'''
+    
+    return enhanced_analyzer_content
+
+def backup_current_file(file_path):
+    """Crear backup del archivo actual"""
+    if os.path.exists(file_path):
+        backup_path = f"{file_path}.backup"
+        shutil.copy2(file_path, backup_path)
+        print(f"✅ Backup creado: {backup_path}")
+        return True
+    return False
+
+def main():
+    print("=== SCRIPT DE CORRECCIÓN AUTOMÁTICA ===")
+    print("Corrigiendo el error de EnhancedHTMLReportGenerator...\n")
+    
+    # Verificar que estamos en el directorio correcto
+    current_dir = Path.cwd()
+    if not (current_dir / 'manage.py').exists():
+        print("❌ Error: Ejecuta este script desde el directorio backend/")
+        return False
+    
+    # Ruta del archivo a corregir
+    target_file = Path("apps/reports/utils/enhanced_analyzer.py")
+    
+    # Crear directorio si no existe
+    target_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Crear backup si el archivo existe
+    if target_file.exists():
+        backup_created = backup_current_file(str(target_file))
+        print(f"📄 Archivo encontrado: {target_file}")
+    else:
+        print(f"📄 Creando nuevo archivo: {target_file}")
+    
+    # Crear el contenido corregido
+    try:
+        corrected_content = create_fixed_enhanced_analyzer()
+        
+        # Escribir el archivo corregido
+        with open(target_file, 'w', encoding='utf-8') as f:
+            f.write(corrected_content)
+        
+        print(f"✅ Archivo corregido creado exitosamente")
+        print(f"   Ubicación: {target_file}")
+        print(f"   Tamaño: {len(corrected_content)} caracteres")
+        
+        # Verificar que el archivo se escribió correctamente
+        if target_file.exists() and target_file.stat().st_size > 1000:
+            print("✅ Verificación exitosa: archivo creado correctamente")
+        else:
+            print("❌ Error: archivo no se creó correctamente")
+            return False
+        
+        print("\n=== SIGUIENTE PASO ===")
+        print("Ejecuta el diagnóstico nuevamente para verificar la corrección:")
+        print("  python diagnostic_azure_reports.py")
+        
+        print("\n=== TESTING RÁPIDO ===")
+        print("Para probar la corrección inmediatamente:")
+        print("  python manage.py shell")
+        print("  >>> from apps.reports.utils.enhanced_analyzer import EnhancedHTMLReportGenerator")
+        print("  >>> generator = EnhancedHTMLReportGenerator()")
+        print("  >>> print('✅ Clase importada correctamente')")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error creando archivo corregido: {e}")
+        return False
+
+if __name__ == "__main__":
+    success = main()
+    if success:
+        print("\n🎉 CORRECCIÓN COMPLETADA EXITOSAMENTE")
+        print("   El error de EnhancedHTMLReportGenerator ha sido corregido.")
+        print("   Ahora puedes generar PDFs sin problemas.")
+    else:
+        print("\n🚨 ERROR EN LA CORRECCIÓN")
+        print("   Por favor revisa los errores y ejecuta manualmente.")

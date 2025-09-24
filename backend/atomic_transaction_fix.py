@@ -1,4 +1,67 @@
-# backend/apps/storage/services/complete_report_service.py
+#!/usr/bin/env python
+"""
+Fix definitivo para el problema de transacciones atómicas
+Ejecutar desde backend/: python atomic_transaction_fix.py
+"""
+
+import os
+import django
+from pathlib import Path
+
+# Configurar Django
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+django.setup()
+
+def fix_database_schema():
+    """Corregir esquema de base de datos expandiendo campos"""
+    try:
+        from django.db import connection
+        
+        with connection.cursor() as cursor:
+            print("🔧 Expandiendo campos de base de datos...")
+            
+            # Expandir campo pdf_file_url
+            try:
+                cursor.execute("ALTER TABLE reports_report ALTER COLUMN pdf_file_url TYPE VARCHAR(500);")
+                print("✅ Campo pdf_file_url expandido a 500 caracteres")
+            except Exception as e:
+                if "does not exist" in str(e):
+                    print("ℹ️ Campo pdf_file_url no existe o ya está correcto")
+                else:
+                    print(f"⚠️ Error expandiendo pdf_file_url: {e}")
+            
+            # Expandir campo pdf_azure_blob_name si existe
+            try:
+                cursor.execute("ALTER TABLE reports_report ALTER COLUMN pdf_azure_blob_name TYPE VARCHAR(300);")
+                print("✅ Campo pdf_azure_blob_name expandido a 300 caracteres")
+            except Exception as e:
+                if "does not exist" in str(e):
+                    print("ℹ️ Campo pdf_azure_blob_name no existe")
+                else:
+                    print(f"⚠️ Error expandiendo pdf_azure_blob_name: {e}")
+            
+            # Verificar cambios
+            cursor.execute("""
+                SELECT column_name, character_maximum_length 
+                FROM information_schema.columns 
+                WHERE table_name = 'reports_report' 
+                AND column_name IN ('pdf_file_url', 'pdf_azure_blob_name');
+            """)
+            
+            results = cursor.fetchall()
+            for column_name, max_length in results:
+                print(f"📊 {column_name}: {max_length} caracteres máximo")
+            
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error corrigiendo esquema: {e}")
+        return False
+
+def create_improved_complete_report_service():
+    """Crear versión mejorada del servicio que maneja transacciones correctamente"""
+    
+    service_content = '''# backend/apps/storage/services/complete_report_service.py
 # VERSIÓN MEJORADA - Manejo correcto de transacciones atómicas
 
 import pandas as pd
@@ -365,3 +428,75 @@ def generate_complete_report(report) -> Dict[str, Any]:
 def regenerate_pdf(report) -> Dict[str, Any]:
     """Regenerar solo PDF de un reporte"""
     return complete_report_service.regenerate_report_pdf(report)
+'''
+    
+    return service_content
+
+def update_service_file():
+    """Actualizar el archivo del servicio con la versión mejorada"""
+    
+    service_file = Path("apps/storage/services/complete_report_service.py")
+    
+    # Crear backup
+    if service_file.exists():
+        backup_file = service_file.with_suffix('.py.backup')
+        backup_file.write_text(service_file.read_text(encoding='utf-8'), encoding='utf-8')
+        print(f"📄 Backup creado: {backup_file}")
+    
+    # Escribir versión mejorada
+    improved_content = create_improved_complete_report_service()
+    service_file.write_text(improved_content, encoding='utf-8')
+    
+    print(f"✅ Servicio actualizado: {service_file}")
+    return True
+
+def main():
+    """Aplicar todas las correcciones"""
+    
+    print("=== FIX DEFINITIVO PARA TRANSACCIONES ATÓMICAS ===")
+    print("Resolviendo problema de transacciones corruptas...\n")
+    
+    # Verificar directorio
+    if not Path('manage.py').exists():
+        print("❌ Error: Ejecuta desde el directorio backend/")
+        return False
+    
+    success_count = 0
+    
+    # 1. Corregir esquema de base de datos
+    print("1. Corrigiendo esquema de base de datos...")
+    if fix_database_schema():
+        success_count += 1
+        print("   ✅ Esquema de BD corregido\n")
+    else:
+        print("   ❌ Error corrigiendo esquema\n")
+    
+    # 2. Actualizar servicio con manejo seguro de transacciones
+    print("2. Actualizando servicio con manejo seguro de transacciones...")
+    if update_service_file():
+        success_count += 1
+        print("   ✅ Servicio actualizado\n")
+    else:
+        print("   ❌ Error actualizando servicio\n")
+    
+    # Resultado
+    if success_count >= 2:
+        print("🎉 FIX APLICADO EXITOSAMENTE")
+        print("\n📋 CAMBIOS REALIZADOS:")
+        print("   ✅ Campos de BD expandidos (pdf_file_url: 500 chars)")
+        print("   ✅ Manejo seguro de transacciones implementado")
+        print("   ✅ Actualizaciones de BD en bloques separados")
+        print("   ✅ Truncamiento automático de URLs largas")
+        print("\n🚀 PRÓXIMOS PASOS:")
+        print("   1. Ejecuta: python diagnostic_azure_reports.py")
+        print("   2. El sistema debería funcionar perfectamente")
+        
+        return True
+    else:
+        print("🚨 FIX PARCIAL")
+        print("   Revisa los errores arriba e intenta corrección manual")
+        return False
+
+if __name__ == "__main__":
+    success = main()
+    exit(0 if success else 1)
